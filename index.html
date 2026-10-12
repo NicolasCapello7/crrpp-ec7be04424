@@ -55,9 +55,10 @@ button { cursor: pointer; }
 .num { font-variant-numeric: tabular-nums; }
 
 /* App shell: pinned to the screen; only the content area scrolls, so the bottom bar never moves */
-html, body { overflow: hidden; overscroll-behavior: none; }
-.shell { position: fixed; inset: 0; display: flex; flex-direction: column; }
-.scroller { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
+/* html/body share the bar's color so any strip iOS leaves under the bar blends into it */
+html, body { overflow: hidden; overscroll-behavior: none; background: var(--surface); }
+.shell { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%; display: flex; flex-direction: column; }
+.scroller { flex: 1 1 auto; min-height: 0; background: var(--bg); overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
 .app { max-width: 560px; margin: 0 auto; padding-inline: 16px; padding-top: calc(16px + env(safe-area-inset-top, 0px)); padding-bottom: 28px; display: flex; flex-direction: column; gap: 18px; }
 
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
@@ -100,6 +101,11 @@ html, body { overflow: hidden; overscroll-behavior: none; }
 .stub-amt { flex: 1; min-width: 0; }
 .stub-amt .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
 .stub-amt .amt { font-weight: 700; font-size: 20px; }
+.lbl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pct-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 600; min-height: 26px; font-variant-numeric: tabular-nums; }
+.pct-chip svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
+.pct-chip.especial { color: var(--accent); border-color: var(--accent); }
+.hint { font-size: 12px; color: var(--muted); }
 .pill { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; margin-top: 4px; }
 .pill.pend { background: var(--warn-bg); color: var(--warn); }
 .pill.ok { background: var(--ok-bg); color: var(--ok); }
@@ -163,7 +169,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 
 /* Bottom bar + FAB */
-.nav { flex: 0 0 auto; position: relative; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); z-index: 10; }
+.nav { flex: 0 0 auto; position: relative; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: max(4px, calc(env(safe-area-inset-bottom, 0px) - 16px)); z-index: 10; }
 .nav-inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); }
 .nav button { background: none; border: 0; padding: 12px 4px 10px; font-size: 12px; font-weight: 600; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .nav button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -295,7 +301,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     return /^\d*\.?\d+$/.test(s) ? Number(s) : NaN;
   }
   function pctEf() { return data.pct == null ? 0 : data.pct; }
-  function pctDe(ev) { return ev.cobrado && typeof ev.pctCobrado === "number" ? ev.pctCobrado : pctEf(); }
+  // % for a fecha: frozen when cobrada; otherwise its own % if it has one, else the general one
+  function pctPendiente(ev) { return typeof ev.pctPropio === "number" ? ev.pctPropio : pctEf(); }
+  function pctDe(ev) { return ev.cobrado && typeof ev.pctCobrado === "number" ? ev.pctCobrado : pctPendiente(ev); }
+  function esEspecial(ev) { return pctDe(ev) !== pctEf(); }
   function comision(ev) { return (Number(ev.facturado) || 0) * pctDe(ev) / 100; }
   function buscar(id) { return data.eventos.find(function (e) { return e.id === id; }); }
   function toast(msg) {
@@ -392,7 +401,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       '<div class="meta num">' + intf.format(Number(ev.entradas) || 0) + " entradas · " + money.format(Number(ev.facturado) || 0) + " facturado</div></div>" +
       "</button>" +
       '<div class="tkt-stub">' +
-      '<div class="stub-amt"><div class="lbl">Tu comisión</div><div class="amt num">' + money.format(comision(ev)) + "</div>" +
+      '<div class="stub-amt"><div class="lbl-row"><span class="lbl">Tu comisión</span>' +
+      '<button type="button" class="pct-chip' + (esEspecial(ev) ? " especial" : "") + '" data-pct="' + esc(ev.id) + '" aria-label="Cambiar el porcentaje de esta fecha">' +
+      pctf.format(pctDe(ev)) + '%<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5l3 3L5 14H2v-3z"/></svg></button></div>' +
+      '<div class="amt num">' + money.format(comision(ev)) + "</div>" +
       (ev.cobrado
         ? '<span class="pill ok">Cobrada' + (ev.fechaCobro ? " el " + fechaCorta(ev.fechaCobro) : "") + "</span>"
         : '<span class="pill pend">Pendiente</span>') +
@@ -466,7 +478,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       '<div class="pct-wrap"><input id="pct-input" class="input" type="text" inputmode="decimal" aria-label="Porcentaje de comisión" value="' +
       (data.pct != null ? esc(pctf.format(data.pct)) : "") + '" placeholder="10"><span>%</span></div>' +
       '<button class="btn" type="submit">Guardar</button></form>' +
-      "<p>Si lo cambiás, se recalculan las fechas <b>pendientes</b>. Las que ya marcaste como cobradas conservan el % con el que se cobraron.</p>" +
+      "<p>Si lo cambiás, se recalculan las fechas <b>pendientes</b>. Las que ya cobraste conservan el % con el que se cobraron, y las que tienen un % especial (tocando el % de la tarjeta) mantienen el suyo.</p>" +
       '<div class="err" id="pct-err"></div></section>';
 
     h += '<section class="card"><h2>Copia de seguridad</h2>' +
@@ -500,12 +512,14 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // ---------- sheet (new / edit) ----------
   var sheet = { id: null, armedDelete: false };
 
-  function openSheet(id) {
+  function openSheet(id, focoPct) {
     var ev = id ? buscar(id) : null;
     if (id && !ev) return;
     sheet.id = id || null;
     sheet.armedDelete = false;
     var f = ev || { nombre: "", fecha: hoy(), entradas: "", facturado: "", cobrado: false, fechaCobro: null };
+    sheet.pctInicial = ev ? pctDe(ev) : data.pct;
+    var pctTxt = sheet.pctInicial == null ? "" : pctf.format(sheet.pctInicial);
     $sheetRoot.innerHTML =
       '<div class="scrim" data-action="close-bg"><form class="sheet" id="ev-form" role="dialog" aria-modal="true" aria-labelledby="sheet-title" novalidate>' +
       '<div class="sheet-h"><h2 id="sheet-title">' + (ev ? "Editar fecha" : "Nueva fecha") + '</h2><button type="button" class="x" data-action="close" aria-label="Cerrar">✕</button></div>' +
@@ -513,8 +527,11 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       '<div class="field"><label for="f-fecha">Fecha del evento</label><input id="f-fecha" class="input" type="date" value="' + esc(f.fecha) + '"></div>' +
       '<div class="grid2">' +
       '<div class="field"><label for="f-entradas">Entradas vendidas</label><input id="f-entradas" class="input miles num" type="text" inputmode="numeric" autocomplete="off" placeholder="0" value="' + esc(f.entradas === "" ? "" : intf.format(f.entradas)) + '"></div>' +
-      '<div class="field"><label for="f-facturado">Monto facturado</label><div class="money"><span>$</span><input id="f-facturado" class="input miles" type="text" inputmode="numeric" autocomplete="off" placeholder="2.527.000" value="' + esc(f.facturado === "" ? "" : intf.format(f.facturado)) + '"></div></div>' +
+      '<div class="field"><label for="f-facturado">Monto facturado</label><div class="money"><span>$</span><input id="f-facturado" class="input miles" type="text" inputmode="numeric" autocomplete="off" placeholder="0" value="' + esc(f.facturado === "" ? "" : intf.format(f.facturado)) + '"></div></div>' +
       "</div>" +
+      '<div class="field"><label for="f-pctev">Comisión de esta fecha</label>' +
+      '<div class="pct-wrap"><input id="f-pctev" class="input num" type="text" inputmode="decimal" autocomplete="off" placeholder="' + esc(pctf.format(pctEf())) + '" value="' + esc(pctTxt) + '"><span>%</span></div>' +
+      '<div class="hint">Tu % general es ' + (data.pct == null ? "0% (no lo configuraste)" : pctf.format(data.pct) + "%") + ". Cambialo acá solo si esta fecha se paga distinto.</div></div>" +
       '<div class="preview"><span class="sub">Tu comisión<span id="f-pct"></span></span><span class="amt num" id="f-com">$ 0</span></div>' +
       (ev ? '<label class="check"><input type="checkbox" id="f-cobrado"' + (f.cobrado ? " checked" : "") + "> Ya la cobré</label>" +
         '<div class="field" id="f-fc-wrap"' + (f.cobrado ? "" : " hidden") + '><label for="f-fcobro">Fecha de cobro</label><input id="f-fcobro" class="input" type="date" value="' + esc(f.fechaCobro || hoy()) + '"></div>' : "") +
@@ -523,15 +540,27 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       (ev ? '<button class="btn danger" type="button" data-action="delete" id="f-del">Eliminar</button>' : "") +
       "</div></form></div>";
     updatePreview();
+    if (focoPct) {
+      var pi = document.getElementById("f-pctev");
+      pi.focus();
+      try { pi.setSelectionRange(0, pi.value.length); } catch (e) { /* ignore */ }
+    }
+  }
+
+  // Reads the per-fecha % field: null = empty (use general), NaN = invalid
+  function leerPctFecha() {
+    var raw = ((document.getElementById("f-pctev") || {}).value || "").replace("%", "").trim();
+    if (!raw) return null;
+    var v = parseNum(raw);
+    return isNaN(v) || v < 0 || v > 100 ? NaN : v;
   }
 
   function closeSheet() { $sheetRoot.innerHTML = ""; sheet.id = null; }
 
   function updatePreview() {
     var fac = parseNum((document.getElementById("f-facturado") || {}).value);
-    var ev = sheet.id ? buscar(sheet.id) : null;
-    var cb = document.getElementById("f-cobrado");
-    var p = ev && ev.cobrado && cb && cb.checked && typeof ev.pctCobrado === "number" ? ev.pctCobrado : pctEf();
+    var v = leerPctFecha();
+    var p = v == null || isNaN(v) ? pctEf() : v;
     var com = document.getElementById("f-com"), lp = document.getElementById("f-pct");
     if (com) com.textContent = money.format(isNaN(fac) ? 0 : fac * p / 100);
     if (lp) lp.textContent = " (" + pctf.format(p) + "%)";
@@ -547,14 +576,21 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (!partes(fecha)) { err.textContent = "Elegí la fecha del evento."; return; }
     if (isNaN(entradas) || entradas < 0 || Math.floor(entradas) !== entradas) { err.textContent = "Las entradas tienen que ser un número entero."; return; }
     if (isNaN(facturado) || facturado < 0) { err.textContent = "Revisá el monto facturado: solo números, por ejemplo 1.250.000"; return; }
+    var pctFecha = leerPctFecha();
+    if (pctFecha !== null && isNaN(pctFecha)) { err.textContent = "La comisión tiene que ser un porcentaje entre 0 y 100, por ejemplo 10 o 12,5."; return; }
+    var cambioPct = pctFecha !== sheet.pctInicial;
+    // A % equal to the general one (or empty) means "follow the general %"
+    var propio = pctFecha === null || pctFecha === pctEf() ? null : pctFecha;
 
     var ev = sheet.id ? buscar(sheet.id) : null;
     var antes = ev ? Object.assign({}, ev) : null;
     if (ev) {
       ev.nombre = nombre; ev.fecha = fecha; ev.entradas = entradas; ev.facturado = facturado;
+      if (cambioPct) ev.pctPropio = propio;
       var cb = document.getElementById("f-cobrado");
       if (cb && cb.checked) {
-        ev.pctCobrado = antes.cobrado && typeof antes.pctCobrado === "number" ? antes.pctCobrado : pctEf();
+        if (cambioPct) ev.pctCobrado = pctFecha === null ? pctEf() : pctFecha;
+        else if (!(antes.cobrado && typeof antes.pctCobrado === "number")) ev.pctCobrado = pctPendiente(ev);
         ev.cobrado = true;
         ev.fechaCobro = document.getElementById("f-fcobro").value || hoy();
       } else {
@@ -562,7 +598,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       }
     } else {
       data.eventos.push({ id: nuevoId(), nombre: nombre, fecha: fecha, entradas: entradas, facturado: facturado,
-        cobrado: false, fechaCobro: null, pctCobrado: null, creado: new Date().toISOString() });
+        pctPropio: propio, cobrado: false, fechaCobro: null, pctCobrado: null, creado: new Date().toISOString() });
     }
     if (!persist()) {
       if (ev) Object.assign(ev, antes); else data.eventos.pop();
@@ -599,7 +635,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (!ev) return;
     var antes = Object.assign({}, ev);
     if (ev.cobrado) { ev.cobrado = false; ev.fechaCobro = null; ev.pctCobrado = null; }
-    else { ev.cobrado = true; ev.fechaCobro = hoy(); ev.pctCobrado = pctEf(); }
+    else { ev.cobrado = true; ev.fechaCobro = hoy(); ev.pctCobrado = pctPendiente(ev); }
     if (!persist()) { Object.assign(ev, antes); return; }
     render();
     toast(ev.cobrado ? "Marcada como cobrada" : "Volvió a pendiente");
@@ -672,6 +708,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         var eventos = d.eventos.filter(function (e) { return e && typeof e.nombre === "string" && partes(e.fecha); }).map(function (e) {
           return { id: String(e.id || nuevoId()), nombre: e.nombre, fecha: e.fecha, entradas: Number(e.entradas) || 0, facturado: Number(e.facturado) || 0,
             cobrado: !!e.cobrado, fechaCobro: e.cobrado ? (e.fechaCobro || null) : null,
+            pctPropio: typeof e.pctPropio === "number" ? e.pctPropio : null,
             pctCobrado: e.cobrado && typeof e.pctCobrado === "number" ? e.pctCobrado : null, creado: e.creado || new Date().toISOString() };
         });
         ui.pendingImport = { eventos: eventos, pct: typeof d.pct === "number" ? d.pct : null, exportado: d.exportado || null };
@@ -704,6 +741,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (t.hasAttribute("data-filtro")) { ui.filtro = t.getAttribute("data-filtro"); render(); return; }
     if (t.hasAttribute("data-rank")) { ui.rankBy = t.getAttribute("data-rank"); render(); return; }
     if (t.hasAttribute("data-edit")) { openSheet(t.getAttribute("data-edit")); return; }
+    if (t.hasAttribute("data-pct")) { openSheet(t.getAttribute("data-pct"), true); return; }
     if (t.hasAttribute("data-toggle")) { togglePago(t.getAttribute("data-toggle")); return; }
     var a = t.getAttribute("data-action");
     if (a === "new") openSheet(null);
@@ -735,7 +773,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   document.addEventListener("input", function (e) {
     if (e.target.classList && e.target.classList.contains("miles")) maskMiles(e.target);
-    if (e.target.id === "f-facturado") updatePreview();
+    if (e.target.id === "f-facturado" || e.target.id === "f-pctev") updatePreview();
   });
   document.addEventListener("change", function (e) {
     if (e.target.id === "f-cobrado") {
