@@ -1,7 +1,7 @@
 {
   "name": "Comisiones RRPP",
   "short_name": "Comisiones",
-  "description": "Registro de fechas vendidas, comisiones y cobros.",
+  "description": "Registro de eventos vendidos, comisiones y cobros.",
   "lang": "es-AR",
   "start_url": "./",
   "scope": "./",

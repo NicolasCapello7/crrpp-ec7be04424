@@ -249,7 +249,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     <div class="brand">Mis <span>comisiones</span></div>
     <button class="fab" id="fab" type="button" data-action="new">
       <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
-      Nueva fecha
+      Nuevo evento
     </button>
   </div>
   <main id="main"></main>
@@ -260,7 +260,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   <div class="nav-inner">
     <button type="button" data-view="fechas" aria-current="page">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/><path d="M14 5v12" stroke-dasharray="2 2"/></svg>
-      Fechas
+      Eventos
     </button>
     <button type="button" data-view="rendimiento">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>
@@ -295,7 +295,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 13;
+  var VERSION = 14;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false };
 
   var $main = document.getElementById("main");
@@ -435,8 +435,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var h = '<section class="summary" aria-label="Resumen de cobros">' +
       '<div><div class="eyebrow">Te deben</div>' +
       '<div class="big num">' + money.format(t.pend) + "</div>" +
-      '<div class="sub">' + (t.pendN === 1 ? "1 fecha por cobrar" : t.pendN + " fechas por cobrar") +
-      (t.factN ? " (" + t.factN + (t.factN === 1 ? " facturada" : " facturadas") + ")" : "") +
+      '<div class="sub">' + (t.pendN === 1 ? "1 evento por cobrar" : t.pendN + " eventos por cobrar") +
+      (t.factN ? " (" + t.factN + (t.factN === 1 ? " facturado" : " facturados") + ")" : "") +
       (data.pct != null ? " · comisión " + pctf.format(data.pct) + "%" : "") + "</div></div>" +
       '<div class="split">' +
       '<div><div class="eyebrow">Ya cobrado</div><div class="v num">' + money.format(t.cobr) + "</div></div>" +
@@ -445,7 +445,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
     var conFact = hayFacturacion();
     if (!conFact && ui.filtro === "fact") ui.filtro = "todas";
-    h += '<div class="chips filtros" role="group" aria-label="Filtrar fechas">' +
+    h += '<div class="chips filtros" role="group" aria-label="Filtrar eventos">' +
       chip("todas", "Todas", data.eventos.length) + chip("pend", "Pendientes", t.sinFactN) +
       (conFact ? chip("fact", "Facturadas", t.factN) : "") + chip("cobr", "Cobradas", t.cobrN) + "</div>";
 
@@ -453,10 +453,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var list = ordenados().filter(function (ev) {
       return ui.filtro === "todas" || estado(ev) === FILTRO_ESTADO[ui.filtro];
     });
-    var VACIO = { pend: "No tenés fechas pendientes.", fact: "No tenés fechas facturadas esperando cobro.", cobr: "Todavía no marcaste fechas como cobradas." };
+    var VACIO = { pend: "No tenés eventos pendientes.", fact: "No tenés eventos facturados esperando cobro.", cobr: "Todavía no marcaste eventos como cobrados." };
 
     if (!data.eventos.length) {
-      h += '<div class="empty"><strong>Todavía no cargaste fechas</strong>Tocá <b>Nueva fecha</b>, poné el evento, las entradas y el monto que ves en Bombo, y la app calcula tu comisión.</div>';
+      h += '<div class="empty"><strong>Todavía no cargaste eventos</strong>Tocá <b>Nuevo evento</b>, poné el nombre, las entradas y el monto que ves en Bombo, y la app calcula tu comisión.</div>';
     } else if (!list.length) {
       h += '<div class="empty">' + VACIO[ui.filtro] + "</div>";
     } else {
@@ -497,7 +497,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       "</button>" +
       '<div class="tkt-stub">' +
       '<div class="stub-amt"><div class="lbl-row"><span class="lbl">Tu comisión</span>' +
-      '<button type="button" class="pct-chip' + (esEspecial(ev) ? " especial" : "") + '" data-pct="' + esc(ev.id) + '" aria-expanded="' + (ui.editPct === ev.id) + '" aria-label="Cambiar el porcentaje de esta fecha">' +
+      '<button type="button" class="pct-chip' + (esEspecial(ev) ? " especial" : "") + '" data-pct="' + esc(ev.id) + '" aria-expanded="' + (ui.editPct === ev.id) + '" aria-label="Cambiar el porcentaje de este evento">' +
       pctf.format(pctDe(ev)) + '%<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5l3 3L5 14H2v-3z"/></svg></button></div>' +
       '<div class="amt num" data-amt="' + esc(ev.id) + '">' + money.format(comision(ev)) + "</div>" +
       pill + "</div>" + boton + "</div>" +
@@ -510,7 +510,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var g = pctEf();
     var rapidos = [3, 5, g].filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(function (a, b) { return a - b; });
     return '<form class="pct-edit" id="pe-form" data-id="' + esc(ev.id) + '" novalidate>' +
-      '<label for="pe-input">Comisión para esta fecha</label>' +
+      '<label for="pe-input">Comisión para este evento</label>' +
       '<div class="pe-row"><div class="pct-wrap"><input id="pe-input" class="input num" type="text" inputmode="decimal" autocomplete="off" value="' +
       esc(pctf.format(pctDe(ev))) + '"><span>%</span></div>' +
       '<button class="btn" type="submit">Guardar</button>' +
@@ -551,24 +551,24 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   function viewRendimiento() {
     var evs = data.eventos;
     if (!evs.length) {
-      return '<div class="empty"><strong>Sin datos todavía</strong>Cuando cargues tus fechas vas a ver acá cuáles vendieron más, tu precio promedio por entrada y lo que ganaste por mes.</div>';
+      return '<div class="empty"><strong>Sin datos todavía</strong>Cuando cargues tus eventos vas a ver acá cuáles vendieron más, tu precio promedio por entrada y lo que ganaste por mes.</div>';
     }
     var t = totales();
     var prom = t.entradas / evs.length;
     var ticket = t.entradas ? t.facturado / t.entradas : 0;
     var h = '<div class="tiles">' +
-      tile(intf.format(evs.length), "fechas trabajadas") +
+      tile(intf.format(evs.length), "eventos trabajados") +
       tile(intf.format(t.entradas), "entradas vendidas") +
       tile(money.format(t.facturado), "facturado total") +
       tile(money.format(t.com), "comisión total") +
-      tile(intf.format(Math.round(prom)), "entradas por fecha (promedio)") +
+      tile(intf.format(Math.round(prom)), "entradas por evento (promedio)") +
       tile(money.format(ticket), "precio promedio por entrada") +
       "</div>";
 
     var key = ui.rankBy;
     var top = evs.slice().sort(function (a, b) { return (Number(b[key]) || 0) - (Number(a[key]) || 0); }).slice(0, 10);
     var max = Math.max.apply(null, top.map(function (e) { return Number(e[key]) || 0; }).concat([1]));
-    h += '<div class="section-h"><h2>Mejores fechas</h2><div class="chips" role="group" aria-label="Ordenar ranking">' +
+    h += '<div class="section-h"><h2>Mejores eventos</h2><div class="chips" role="group" aria-label="Ordenar ranking">' +
       '<button type="button" class="chip" data-rank="entradas" aria-pressed="' + (key === "entradas") + '">Entradas</button>' +
       '<button type="button" class="chip" data-rank="facturado" aria-pressed="' + (key === "facturado") + '">Facturado</button>' +
       "</div></div>";
@@ -600,7 +600,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var filasProd = Object.keys(porProd).map(function (k) { return porProd[k]; }).sort(function (a, b) { return b.com - a.com; });
     if (filasProd.length > 1 || (filasProd[0] && filasProd[0].nombre !== "Sin productora")) {
       h += '<div class="section-h"><h2>Por productora</h2></div>';
-      h += '<div class="table-wrap"><table><thead><tr><th>Productora</th><th>Fechas</th><th>Entradas</th><th>Comisión</th><th>Por cobrar</th></tr></thead><tbody>' +
+      h += '<div class="table-wrap"><table><thead><tr><th>Productora</th><th>Eventos</th><th>Entradas</th><th>Comisión</th><th>Por cobrar</th></tr></thead><tbody>' +
         filasProd.map(function (r) {
           return "<tr><td>" + esc(r.nombre) + '</td><td class="num">' + r.n + '</td><td class="num">' + intf.format(r.ent) +
             '</td><td class="num">' + money.format(r.com) + '</td><td class="num' + (r.pend > 0 ? " pend" : "") + '">' + money.format(r.pend) + "</td></tr>";
@@ -609,7 +609,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
     var keys = Object.keys(meses).sort().reverse();
     h += '<div class="section-h"><h2>Por mes</h2></div>';
-    h += '<div class="table-wrap"><table><thead><tr><th>Mes</th><th>Fechas</th><th>Entradas</th><th>Comisión</th><th>Pendiente</th></tr></thead><tbody>' +
+    h += '<div class="table-wrap"><table><thead><tr><th>Mes</th><th>Eventos</th><th>Entradas</th><th>Comisión</th><th>Pendiente</th></tr></thead><tbody>' +
       keys.map(function (k) {
         var m = meses[k], p = partes(k + "-01");
         var label = p ? MESES_LARGO[p.m - 1] + " " + p.y : "Sin fecha";
@@ -625,12 +625,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   function viewAjustes() {
     var h = '<section class="card"><h2>Tu comisión</h2>' +
-      "<p>Porcentaje que cobrás sobre el monto facturado de cada fecha.</p>" +
+      "<p>Porcentaje que cobrás sobre el monto facturado de cada evento.</p>" +
       '<form id="pct-form" class="row" novalidate>' +
       '<div class="pct-wrap"><input id="pct-input" class="input" type="text" inputmode="decimal" aria-label="Porcentaje de comisión" value="' +
       (data.pct != null ? esc(pctf.format(data.pct)) : "") + '" placeholder="10"><span>%</span></div>' +
       '<button class="btn" type="submit">Guardar</button></form>' +
-      "<p>Si lo cambiás, se recalculan las fechas <b>pendientes</b>. Las que ya cobraste conservan el % con el que se cobraron, y las que tienen un % especial (tocando el % de la tarjeta) mantienen el suyo.</p>" +
+      "<p>Si lo cambiás, se recalculan los eventos <b>pendientes</b>. Los que ya cobraste conservan el % con el que se cobraron, y los que tienen un % especial (tocando el % de la tarjeta) mantienen el suyo.</p>" +
       '<div class="err" id="pct-err"></div></section>';
 
     h += viewProductoras();
@@ -645,7 +645,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       "</div>";
     if (ui.pendingImport) {
       var n = ui.pendingImport.eventos.length;
-      h += '<div class="confirm"><span>Vas a reemplazar tus ' + data.eventos.length + " fechas actuales por las " + n + " de la copia" +
+      h += '<div class="confirm"><span>Vas a reemplazar tus ' + data.eventos.length + " eventos actuales por los " + n + " de la copia" +
         (ui.pendingImport.exportado ? " del " + fechaCorta(String(ui.pendingImport.exportado).slice(0, 10)) : "") + ". Esto no se puede deshacer.</span>" +
         '<div class="row"><button class="btn" type="button" data-action="import-confirm">Reemplazar</button>' +
         '<button class="btn ghost" type="button" data-action="import-cancel">Cancelar</button></div></div>';
@@ -653,7 +653,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     h += '<div class="err" id="import-err"></div></section>';
 
     h += '<section class="card"><h2>Planilla para Excel</h2>' +
-      "<p>Descargá todas tus fechas con entradas, facturado, comisión y estado de cobro, para abrir en Excel o Google Sheets.</p>" +
+      "<p>Descargá todos tus eventos con entradas, facturado, comisión y estado de cobro, para abrir en Excel o Google Sheets.</p>" +
       '<div class="row"><button class="btn ghost" type="button" data-action="export-csv"' + (data.eventos.length ? "" : " disabled") + ">Descargar planilla</button></div></section>";
 
     h += '<section class="card"><h2>Instalar en tu iPhone</h2><ol>' +
@@ -671,7 +671,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   function viewProductoras() {
     var lista = data.productoras.slice().sort(function (a, b) { return a.nombre.localeCompare(b.nombre, "es"); });
     var h = '<section class="card" id="mis-productoras"><h2>Mis productoras</h2>' +
-      "<p>Elegilas al cargar cada fecha. Las que <b>piden factura</b> suman el paso <b>Facturada</b> antes de cobrar.</p>";
+      "<p>Elegilas al cargar cada evento. Las que <b>piden factura</b> suman el paso <b>Facturada</b> antes de cobrar.</p>";
     if (!lista.length) h += '<p class="hint">Todavía no agregaste productoras.</p>';
     h += '<ul class="prod-list">' + lista.map(function (p) {
       var n = fechasDe(p.id);
@@ -683,11 +683,11 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
           '<div class="row"><button class="btn" type="submit">Guardar</button>' +
           '<button class="btn ghost" type="button" data-action="prod-cancel">Cancelar</button>' +
           '<button class="btn danger" type="button" data-action="prod-delete" id="prod-del">' +
-          (ui.prodBorrar ? "Tocá de nuevo" + (n ? " (" + n + (n === 1 ? " fecha queda" : " fechas quedan") + " sin productora)" : "") : "Eliminar") +
+          (ui.prodBorrar ? "Tocá de nuevo" + (n ? " (" + n + (n === 1 ? " evento queda" : " eventos quedan") + " sin productora)" : "") : "Eliminar") +
           "</button></div></form></li>";
       }
       return '<li class="prod-row"><div class="prod-info"><span class="prod-nom">' + esc(p.nombre) + "</span>" +
-        '<span class="hint">' + (n === 1 ? "1 fecha" : n + " fechas") + "</span>" +
+        '<span class="hint">' + (n === 1 ? "1 evento" : n + " eventos") + "</span>" +
         (p.factura ? '<span class="pill fact">Pide factura</span>' : "") + "</div>" +
         '<button type="button" class="btn ghost sm" data-prod-edit="' + esc(p.id) + '">Editar</button></li>';
     }).join("") + "</ul>";
@@ -763,7 +763,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var pctTxt = sheet.pctInicial == null ? "" : pctf.format(sheet.pctInicial);
     $sheetRoot.innerHTML =
       '<div class="scrim" data-action="close-bg"><form class="sheet" id="ev-form" role="dialog" aria-modal="true" aria-labelledby="sheet-title" novalidate>' +
-      '<div class="sheet-h"><h2 id="sheet-title">' + (ev ? "Editar fecha" : "Nueva fecha") + '</h2><button type="button" class="x" data-action="close" aria-label="Cerrar">✕</button></div>' +
+      '<div class="sheet-h"><h2 id="sheet-title">' + (ev ? "Editar evento" : "Nuevo evento") + '</h2><button type="button" class="x" data-action="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="field"><label for="f-nombre">Evento</label><input id="f-nombre" class="input" type="text" autocomplete="off" placeholder="Ej: Solomun · Mute" value="' + esc(f.nombre) + '"></div>' +
       '<div class="grid2">' +
       '<div class="field"><label for="f-fecha">Fecha</label><input id="f-fecha" class="input" type="date" value="' + esc(f.fecha) + '"></div>' +
@@ -892,7 +892,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     }
     closeSheet();
     render();
-    toast(ev ? "Fecha actualizada" : "Fecha agregada");
+    toast(ev ? "Evento actualizado" : "Evento guardado");
   }
 
   function deleteFromSheet() {
@@ -912,7 +912,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (!persist()) { data.eventos = antes; return; }
     closeSheet();
     render();
-    toast("Fecha eliminada");
+    toast("Evento eliminado");
   }
 
   function togglePago(id) {
@@ -923,7 +923,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     else { ev.cobrado = true; ev.fechaCobro = hoy(); ev.pctCobrado = pctPendiente(ev); }
     if (!persist()) { Object.assign(ev, antes); return; }
     render();
-    toast(ev.cobrado ? "Marcada como cobrada" : estado(ev) === "facturada" ? "Volvió a facturada" : "Volvió a pendiente");
+    toast(ev.cobrado ? "Evento cobrado" : estado(ev) === "facturada" ? "Volvió a Facturada" : "Volvió a Pendiente");
   }
 
   function marcarFacturada(id) {
@@ -933,7 +933,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     ev.facturada = true; ev.fechaFactura = hoy();
     if (!persist()) { Object.assign(ev, antes); return; }
     render();
-    toast("Marcada como facturada");
+    toast("Evento facturado");
   }
 
   function savePct() {
@@ -1033,7 +1033,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (!persist()) { data.pct = antes.pct; data.eventos = antes.eventos; data.productoras = antes.productoras; return; }
     ui.pendingImport = null;
     render();
-    toast("Copia restaurada: " + p.eventos.length + " fechas");
+    toast("Copia restaurada: " + p.eventos.length + " eventos");
   }
 
   // ---------- events ----------
