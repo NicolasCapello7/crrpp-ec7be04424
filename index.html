@@ -85,9 +85,10 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .chip { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 7px 14px; font-size: 14px; font-weight: 500; color: var(--muted); }
 .chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 .chip .c { opacity: .7; margin-left: 4px; }
-.chips.filtros { flex-wrap: nowrap; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; }
-.chips.filtros::-webkit-scrollbar { display: none; }
-.chips.filtros .chip { flex: 0 0 auto; padding: 7px 12px; font-size: 13.5px; white-space: nowrap; }
+/* status filters always share the full width in one row */
+.chips.filtros { flex-wrap: nowrap; gap: 6px; }
+.chips.filtros .chip { flex: 1 1 0; min-width: 0; padding: 8px 2px; font-size: clamp(11px, 3.4vw, 14px); white-space: nowrap; text-align: center; letter-spacing: -.01em; }
+.chips.filtros .chip .c { margin-left: 3px; }
 
 /* Ticket cards */
 .list { display: flex; flex-direction: column; gap: 14px; }
@@ -295,7 +296,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 15;
+  var VERSION = 16;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false };
 
   var $main = document.getElementById("main");
@@ -370,7 +371,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     return "pendiente";
   }
   function hayFacturacion() {
-    return data.productoras.some(function (p) { return p.factura; }) || data.eventos.some(function (e) { return estado(e) === "facturada"; });
+    // only when at least one evento belongs to a productora that asks for an invoice
+    return data.eventos.some(pideFactura);
   }
   function toast(msg) {
     $toastRoot.innerHTML = '<div class="toast" role="status">' + esc(msg) + "</div>";
