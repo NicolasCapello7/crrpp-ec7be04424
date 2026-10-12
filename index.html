@@ -57,7 +57,7 @@ button { cursor: pointer; }
 /* App shell: pinned to the screen; only the content area scrolls, so the bottom bar never moves */
 /* html/body share the bar's color so any strip iOS leaves under the bar blends into it */
 html, body { overflow: hidden; overscroll-behavior: none; background: var(--surface); }
-.shell { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%; display: flex; flex-direction: column; }
+.shell { position: fixed; top: 0; left: 0; right: 0; height: var(--app-h, 100%); display: flex; flex-direction: column; }
 .scroller { flex: 1 1 auto; min-height: 0; background: var(--bg); overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
 .app { max-width: 560px; margin: 0 auto; padding-inline: 16px; padding-top: calc(16px + env(safe-area-inset-top, 0px)); padding-bottom: 28px; display: flex; flex-direction: column; gap: 18px; }
 
@@ -106,6 +106,14 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .pct-chip svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
 .pct-chip.especial { color: var(--accent); border-color: var(--accent); }
 .hint { font-size: 12px; color: var(--muted); }
+.pct-chip { min-height: 30px; padding: 3px 11px; font-size: 13px; }
+.pct-chip[aria-expanded="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.pct-edit { border-top: 1px dashed var(--line); padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px; background: var(--surface-2); border-radius: 0 0 16px 16px; }
+.pct-edit label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.pe-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pe-row .pct-wrap { width: 110px; }
+.pe-row .btn { min-height: 48px; padding: 10px 16px; }
+.pct-edit .chip { padding: 6px 12px; font-size: 13px; }
 .pill { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; margin-top: 4px; }
 .pill.pend { background: var(--warn-bg); color: var(--warn); }
 .pill.ok { background: var(--ok-bg); color: var(--ok); }
@@ -177,7 +185,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 .fab { flex: 0 0 auto; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 10px 16px; font-size: 14px; display: flex; align-items: center; gap: 6px; }
 
 /* Sheet */
-.scrim { position: fixed; inset: 0; background: rgba(8, 6, 12, .6); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.scrim { position: fixed; top: 0; left: 0; right: 0; height: var(--app-h, 100%); background: rgba(8, 6, 12, .6); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
 .sheet { background: var(--surface); width: 100%; max-width: 560px; border-radius: 20px 20px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); max-height: 92%; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 14px; }
 .sheet-h { display: flex; justify-content: space-between; align-items: center; }
 .sheet-h h2 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 24px; text-transform: uppercase; }
@@ -249,7 +257,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // Persisted data: { pct: number|null, eventos: [...], ultimaCopia: ISO|null }
   var data = { pct: null, eventos: [], ultimaCopia: null };
   var storageOk = true;
-  var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null };
+  var VERSION = 6;
+  var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null };
 
   var $main = document.getElementById("main");
   var $fab = document.getElementById("fab");
@@ -402,9 +411,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       "</button>" +
       '<div class="tkt-stub">' +
       '<div class="stub-amt"><div class="lbl-row"><span class="lbl">Tu comisión</span>' +
-      '<button type="button" class="pct-chip' + (esEspecial(ev) ? " especial" : "") + '" data-pct="' + esc(ev.id) + '" aria-label="Cambiar el porcentaje de esta fecha">' +
+      '<button type="button" class="pct-chip' + (esEspecial(ev) ? " especial" : "") + '" data-pct="' + esc(ev.id) + '" aria-expanded="' + (ui.editPct === ev.id) + '" aria-label="Cambiar el porcentaje de esta fecha">' +
       pctf.format(pctDe(ev)) + '%<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5l3 3L5 14H2v-3z"/></svg></button></div>' +
-      '<div class="amt num">' + money.format(comision(ev)) + "</div>" +
+      '<div class="amt num" data-amt="' + esc(ev.id) + '">' + money.format(comision(ev)) + "</div>" +
       (ev.cobrado
         ? '<span class="pill ok">Cobrada' + (ev.fechaCobro ? " el " + fechaCorta(ev.fechaCobro) : "") + "</span>"
         : '<span class="pill pend">Pendiente</span>') +
@@ -412,7 +421,51 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       (ev.cobrado
         ? '<button type="button" class="btn-pay undo" data-toggle="' + esc(ev.id) + '">Volver a pendiente</button>'
         : '<button type="button" class="btn-pay" data-toggle="' + esc(ev.id) + '">Marcar cobrada</button>') +
-      "</div></article>";
+      "</div>" +
+      (ui.editPct === ev.id ? pctEditor(ev) : "") +
+      "</article>";
+  }
+
+  // Inline editor inside the card to set a % for this fecha only
+  function pctEditor(ev) {
+    var g = pctEf();
+    var rapidos = [3, 5, g].filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(function (a, b) { return a - b; });
+    return '<form class="pct-edit" id="pe-form" data-id="' + esc(ev.id) + '" novalidate>' +
+      '<label for="pe-input">Comisión para esta fecha</label>' +
+      '<div class="pe-row"><div class="pct-wrap"><input id="pe-input" class="input num" type="text" inputmode="decimal" autocomplete="off" value="' +
+      esc(pctf.format(pctDe(ev))) + '"><span>%</span></div>' +
+      '<button class="btn" type="submit">Guardar</button>' +
+      '<button class="btn ghost" type="button" data-action="pct-cancel">Cancelar</button></div>' +
+      '<div class="chips">' + rapidos.map(function (v) {
+        return '<button type="button" class="chip" data-pe="' + v + '">' + pctf.format(v) + "%" + (v === g ? " (general)" : "") + "</button>";
+      }).join("") + "</div>" +
+      '<div class="err" id="pe-err"></div></form>';
+  }
+
+  function previewPct() {
+    var form = document.getElementById("pe-form");
+    if (!form) return;
+    var ev = buscar(form.getAttribute("data-id"));
+    var raw = document.getElementById("pe-input").value.replace("%", "").trim();
+    var v = raw ? parseNum(raw) : pctEf();
+    var amt = document.querySelector('[data-amt="' + ev.id + '"]');
+    if (amt && !isNaN(v)) amt.textContent = money.format((Number(ev.facturado) || 0) * v / 100);
+  }
+
+  function guardarPctFecha() {
+    var form = document.getElementById("pe-form");
+    var ev = buscar(form.getAttribute("data-id"));
+    var err = document.getElementById("pe-err");
+    var raw = document.getElementById("pe-input").value.replace("%", "").trim();
+    var v = raw ? parseNum(raw) : null;
+    if (v !== null && (isNaN(v) || v < 0 || v > 100)) { err.textContent = "Poné un porcentaje entre 0 y 100, por ejemplo 5 o 3,5."; return; }
+    var antes = Object.assign({}, ev);
+    ev.pctPropio = v === null || v === pctEf() ? null : v;
+    if (ev.cobrado) ev.pctCobrado = v === null ? pctEf() : v;
+    if (!persist()) { Object.assign(ev, antes); return; }
+    ui.editPct = null;
+    render();
+    toast(ev.nombre + ": " + pctf.format(pctDe(ev)) + "%");
   }
 
   function viewRendimiento() {
@@ -505,7 +558,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       "<li>Abrí este link en <b>Safari</b>.</li>" +
       "<li>Tocá el botón <b>Compartir</b> (el cuadrado con la flecha).</li>" +
       "<li>Elegí <b>Agregar a inicio</b> y confirmá.</li>" +
-      "</ol><p>Usá siempre la app desde ese ícono: ahí quedan tus datos.</p></section>";
+      "</ol><p>Usá siempre la app desde ese ícono: ahí quedan tus datos.</p>" +
+      '<p class="hint">Versión ' + VERSION + ". Se actualiza sola cuando la abrís con internet.</p></section>";
     return h;
   }
 
@@ -735,13 +789,29 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   // ---------- events ----------
   document.addEventListener("click", function (e) {
-    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-pct],[data-toggle],[data-action]");
+    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-pct],[data-pe],[data-toggle],[data-action]");
     if (!t) return;
-    if (t.hasAttribute("data-view")) { ui.view = t.getAttribute("data-view"); render(); document.getElementById("scroller").scrollTop = 0; return; }
+    if (t.hasAttribute("data-view")) { ui.view = t.getAttribute("data-view"); ui.editPct = null; render(); document.getElementById("scroller").scrollTop = 0; return; }
     if (t.hasAttribute("data-filtro")) { ui.filtro = t.getAttribute("data-filtro"); render(); return; }
     if (t.hasAttribute("data-rank")) { ui.rankBy = t.getAttribute("data-rank"); render(); return; }
     if (t.hasAttribute("data-edit")) { openSheet(t.getAttribute("data-edit")); return; }
-    if (t.hasAttribute("data-pct")) { openSheet(t.getAttribute("data-pct"), true); return; }
+    if (t.hasAttribute("data-pct")) {
+      var pid = t.getAttribute("data-pct");
+      ui.editPct = ui.editPct === pid ? null : pid;
+      render();
+      if (ui.editPct) {
+        var pi = document.getElementById("pe-input");
+        pi.focus();
+        try { pi.setSelectionRange(0, pi.value.length); } catch (err) { /* ignore */ }
+        document.getElementById("pe-form").scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+      return;
+    }
+    if (t.hasAttribute("data-pe")) {
+      document.getElementById("pe-input").value = pctf.format(Number(t.getAttribute("data-pe")));
+      previewPct();
+      return;
+    }
     if (t.hasAttribute("data-toggle")) { togglePago(t.getAttribute("data-toggle")); return; }
     var a = t.getAttribute("data-action");
     if (a === "new") openSheet(null);
@@ -752,10 +822,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     else if (a === "export-csv") exportCsv();
     else if (a === "import-confirm") confirmarImport();
     else if (a === "import-cancel") { ui.pendingImport = null; render(); }
+    else if (a === "pct-cancel") { ui.editPct = null; render(); }
   });
   document.addEventListener("submit", function (e) {
     e.preventDefault();
     if (e.target.id === "ev-form") saveSheet();
+    else if (e.target.id === "pe-form") guardarPctFecha();
     else if (e.target.id === "pct-form") savePct();
   });
   // Thousands mask: "2527000" -> "2.527.000" while typing, keeping the caret after the same digit
@@ -774,6 +846,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   document.addEventListener("input", function (e) {
     if (e.target.classList && e.target.classList.contains("miles")) maskMiles(e.target);
     if (e.target.id === "f-facturado" || e.target.id === "f-pctev") updatePreview();
+    if (e.target.id === "pe-input") previewPct();
   });
   document.addEventListener("change", function (e) {
     if (e.target.id === "f-cobrado") {
@@ -788,12 +861,42 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (e.key === "Escape" && $sheetRoot.innerHTML) closeSheet();
   });
 
+  // ---------- iOS home-screen height fix ----------
+  // With a translucent status bar, iOS can report a viewport shorter than the screen, leaving a
+  // strip under the bottom bar. In standalone mode the app owns the whole screen, so use its height.
+  function ajustarAltura() {
+    var standalone = window.navigator.standalone === true || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
+    var root = document.documentElement;
+    if (!standalone || !window.screen) { root.style.removeProperty("--app-h"); return; }
+    var vertical = !window.matchMedia || matchMedia("(orientation: portrait)").matches;
+    var alto = vertical ? Math.max(screen.height, screen.width) : Math.min(screen.height, screen.width);
+    // only stretch to cover the missing strip; a much smaller viewport means the keyboard is open
+    if (alto > window.innerHeight && alto - window.innerHeight < 120) root.style.setProperty("--app-h", alto + "px");
+    else if (alto <= window.innerHeight) root.style.removeProperty("--app-h");
+  }
+  ajustarAltura();
+  window.addEventListener("resize", ajustarAltura);
+  window.addEventListener("orientationchange", function () { setTimeout(ajustarAltura, 300); });
+
   // ---------- start ----------
   load();
   render();
   if (navigator.storage && navigator.storage.persist) { navigator.storage.persist().catch(function () {}); }
   if ("serviceWorker" in navigator) {
-    window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+    // Check for a new version on every open; reload once when it takes over (data is untouched)
+    var habiaControlador = !!navigator.serviceWorker.controller;
+    var recargando = false;
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (!habiaControlador || recargando) { habiaControlador = true; return; }
+      recargando = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register("sw.js").then(function (reg) {
+      reg.update().catch(function () {});
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "visible") reg.update().catch(function () {});
+      });
+    }).catch(function () {});
   }
 })();
 </script>
