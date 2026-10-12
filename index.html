@@ -25,10 +25,10 @@
   --line: #363042;
   --fg: #f3f0f7;
   --muted: #a7a0b4;
-  --accent: #ff6a3d;
-  --accent-ink: #1c0d06;
-  --ok: #43d197;
-  --ok-bg: rgba(67, 209, 151, .14);
+  --accent: #39ff7f;
+  --accent-ink: #04210f;
+  --ok: #5ccfff;
+  --ok-bg: rgba(92, 207, 255, .14);
   --warn: #ffb950;
   --warn-bg: rgba(255, 185, 80, .14);
   --danger: #ff6b6b;
@@ -39,8 +39,8 @@
 @media (prefers-color-scheme: light) {
   :root {
     --bg: #f4f2f7; --surface: #ffffff; --surface-2: #ece9f1; --line: #dbd6e2;
-    --fg: #17141d; --muted: #696374; --accent: #df4416; --accent-ink: #ffffff;
-    --ok: #10825a; --ok-bg: #def3e9; --warn: #9d5e06; --warn-bg: #fbeed6; --danger: #c9302c;
+    --fg: #17141d; --muted: #696374; --accent: #00b84f; --accent-ink: #03200e;
+    --ok: #0a74a3; --ok-bg: #dcf0fa; --warn: #9d5e06; --warn-bg: #fbeed6; --danger: #c9302c;
     color-scheme: light;
   }
 }
@@ -183,6 +183,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 .nav button { background: none; border: 0; padding: 12px 4px 10px; font-size: 12px; font-weight: 600; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .nav button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .nav button[aria-current="page"] { color: var(--accent); }
+.nav button { position: relative; }
+.nav button.aviso::after { content: ""; position: absolute; top: 9px; left: calc(50% + 8px); width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
 .fab { flex: 0 0 auto; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 10px 16px; font-size: 14px; display: flex; align-items: center; gap: 6px; }
 
 /* Sheet */
@@ -258,7 +260,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // Persisted data: { pct: number|null, eventos: [...], ultimaCopia: ISO|null }
   var data = { pct: null, eventos: [], ultimaCopia: null };
   var storageOk = true;
-  var VERSION = 8;
+  var VERSION = 9;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null };
 
   var $main = document.getElementById("main");
@@ -327,6 +329,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       return (b.fecha || "").localeCompare(a.fecha || "") || (b.creado || "").localeCompare(a.creado || "");
     });
   }
+  function copiaPendiente() { return data.eventos.length > 0 && diasDesde(data.ultimaCopia) > 30; }
   function diasDesde(iso) { return iso ? (Date.now() - new Date(iso).getTime()) / 864e5 : Infinity; }
 
   // ---------- render ----------
@@ -342,9 +345,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       html += '<div class="banner">Este navegador no deja guardar datos (¿modo privado?). Abrí la app desde el ícono de inicio o desde Safari normal.</div>';
     } else if (data.pct == null && ui.view !== "ajustes") {
       html += '<div class="banner"><span>Configurá tu % de comisión para calcular lo que te deben.</span><button type="button" data-view="ajustes">Configurar</button></div>';
-    } else if (data.eventos.length >= 3 && diasDesde(data.ultimaCopia) > 30 && ui.view !== "ajustes") {
-      html += '<div class="banner"><span>' + (data.ultimaCopia ? "Hace más de un mes que no guardás una copia." : "Todavía no guardaste una copia de tus datos.") + '</span><button type="button" data-view="ajustes">Hacer copia</button></div>';
     }
+    // backup reminder lives in Ajustes; the tab shows a dot when a copy is due
+    var tabAjustes = document.querySelector('.nav [data-view="ajustes"]');
+    if (tabAjustes) tabAjustes.classList.toggle("aviso", copiaPendiente());
 
     if (ui.view === "fechas") html += viewFechas();
     else if (ui.view === "rendimiento") html += viewRendimiento();
@@ -539,6 +543,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     h += '<section class="card"><h2>Copia de seguridad</h2>' +
       "<p>Tus datos se guardan solo en este celular. Guardá una copia de vez en cuando (en Archivos o iCloud Drive) para no perderlos si borrás la app o cambiás de teléfono.</p>" +
       '<p>Última copia: <b>' + (data.ultimaCopia ? fechaCorta(data.ultimaCopia.slice(0, 10)) : "nunca") + "</b></p>" +
+      (copiaPendiente() ? '<div class="banner">' + (data.ultimaCopia ? "Hace más de un mes que no guardás una copia." : "Todavía no guardaste una copia de tus datos.") + "</div>" : "") +
       '<div class="row">' +
       '<button class="btn" type="button" data-action="export-json"' + (data.eventos.length ? "" : " disabled") + ">Guardar copia</button>" +
       '<label class="btn ghost file-btn">Restaurar copia<input type="file" id="import-file" accept=".json,application/json"></label>' +
