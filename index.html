@@ -114,6 +114,7 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .pe-row .pct-wrap { width: 110px; }
 .pe-row .btn { min-height: 48px; padding: 10px 16px; }
 .pct-edit .chip { padding: 6px 12px; font-size: 13px; }
+.pct-edit .btn.ghost { background: var(--surface); border: 1px solid var(--line); }
 .pill { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; margin-top: 4px; }
 .pill.pend { background: var(--warn-bg); color: var(--warn); }
 .pill.ok { background: var(--ok-bg); color: var(--ok); }
@@ -257,7 +258,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // Persisted data: { pct: number|null, eventos: [...], ultimaCopia: ISO|null }
   var data = { pct: null, eventos: [], ultimaCopia: null };
   var storageOk = true;
-  var VERSION = 6;
+  var VERSION = 7;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null };
 
   var $main = document.getElementById("main");
