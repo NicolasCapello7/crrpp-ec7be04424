@@ -295,7 +295,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 14;
+  var VERSION = 15;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false };
 
   var $main = document.getElementById("main");
@@ -480,7 +480,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       pill = '<span class="pill ok">Cobrada' + (ev.fechaCobro ? " el " + fechaCorta(ev.fechaCobro) : "") + "</span>";
       boton = '<button type="button" class="btn-pay undo" data-toggle="' + id + '">' + (pideFactura(ev) && ev.facturada ? "Volver a facturada" : "Volver a pendiente") + "</button>";
     } else if (st === "facturada") {
-      pill = '<span class="pill fact">Facturada' + (ev.fechaFactura ? " el " + fechaCorta(ev.fechaFactura) : "") + "</span>";
+      pill = '<span class="pill fact">Facturada</span>';
       boton = '<button type="button" class="btn-pay" data-toggle="' + id + '">Marcar cobrada</button>';
     } else if (pideFactura(ev)) {
       pill = '<span class="pill pend">Sin facturar</span>';
@@ -985,11 +985,11 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     function n(x) { return String(Math.round(x * 100) / 100).replace(".", ","); }
     function q(s) { s = String(s == null ? "" : s); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
     var ESTADOS = { pendiente: "Pendiente", facturada: "Facturada", cobrada: "Cobrada" };
-    var filas = [["Evento", "Fecha", "Productora", "Entradas", "Facturado", "% comisión", "Comisión", "Estado", "Fecha de factura", "Fecha de cobro"].join(";")];
+    var filas = [["Evento", "Fecha", "Productora", "Entradas", "Facturado", "% comisión", "Comisión", "Estado", "Fecha de cobro"].join(";")];
     ordenados().forEach(function (ev) {
       var pr = prod(ev.productoraId);
       filas.push([q(ev.nombre), fechaCorta(ev.fecha), q(pr ? pr.nombre : ""), ev.entradas || 0, n(Number(ev.facturado) || 0), n(pctDe(ev)), n(comision(ev)),
-        ESTADOS[estado(ev)], pideFactura(ev) && ev.facturada ? fechaCorta(ev.fechaFactura) : "", ev.cobrado ? fechaCorta(ev.fechaCobro) : ""].join(";"));
+        ESTADOS[estado(ev)], ev.cobrado ? fechaCorta(ev.fechaCobro) : ""].join(";"));
     });
     entregarArchivo("﻿" + filas.join("\r\n"), "comisiones-rrpp-" + hoy() + ".csv", "text/csv").then(function (ok) {
       if (ok) toast("Planilla lista");
