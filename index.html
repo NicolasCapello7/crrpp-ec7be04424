@@ -57,7 +57,7 @@ button { cursor: pointer; }
 /* App shell: pinned to the screen; only the content area scrolls, so the bottom bar never moves */
 /* html/body share the bar's color so any strip iOS leaves under the bar blends into it */
 html, body { overflow: hidden; overscroll-behavior: none; background: var(--surface); }
-.shell { position: fixed; top: 0; left: 0; right: 0; height: var(--app-h, 100%); display: flex; flex-direction: column; }
+.shell { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; }
 .scroller { flex: 1 1 auto; min-height: 0; background: var(--bg); overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
 .app { max-width: 560px; margin: 0 auto; padding-inline: 16px; padding-top: calc(16px + env(safe-area-inset-top, 0px)); padding-bottom: 28px; display: flex; flex-direction: column; gap: 18px; }
 
@@ -186,7 +186,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 .fab { flex: 0 0 auto; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 10px 16px; font-size: 14px; display: flex; align-items: center; gap: 6px; }
 
 /* Sheet */
-.scrim { position: fixed; top: 0; left: 0; right: 0; height: var(--app-h, 100%); background: rgba(8, 6, 12, .6); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.scrim { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(8, 6, 12, .6); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
 .sheet { background: var(--surface); width: 100%; max-width: 560px; border-radius: 20px 20px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); max-height: 92%; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 14px; }
 .sheet-h { display: flex; justify-content: space-between; align-items: center; }
 .sheet-h h2 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 24px; text-transform: uppercase; }
@@ -258,7 +258,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // Persisted data: { pct: number|null, eventos: [...], ultimaCopia: ISO|null }
   var data = { pct: null, eventos: [], ultimaCopia: null };
   var storageOk = true;
-  var VERSION = 7;
+  var VERSION = 8;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null };
 
   var $main = document.getElementById("main");
@@ -467,6 +467,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     ui.editPct = null;
     render();
     toast(ev.nombre + ": " + pctf.format(pctDe(ev)) + "%");
+    curarLuego();
   }
 
   function viewRendimiento() {
@@ -610,7 +611,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     return isNaN(v) || v < 0 || v > 100 ? NaN : v;
   }
 
-  function closeSheet() { $sheetRoot.innerHTML = ""; sheet.id = null; }
+  function closeSheet() { $sheetRoot.innerHTML = ""; sheet.id = null; curarLuego(); }
+  function curarLuego() { setTimeout(curarViewport, 300); setTimeout(curarViewport, 800); }
 
   function updatePreview() {
     var fac = parseNum((document.getElementById("f-facturado") || {}).value);
@@ -706,6 +708,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     input.blur();
     render();
     toast("Comisión guardada: " + pctf.format(v) + "%");
+    curarLuego();
   }
 
   // ---------- backup / export ----------
@@ -823,7 +826,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     else if (a === "export-csv") exportCsv();
     else if (a === "import-confirm") confirmarImport();
     else if (a === "import-cancel") { ui.pendingImport = null; render(); }
-    else if (a === "pct-cancel") { ui.editPct = null; render(); }
+    else if (a === "pct-cancel") { ui.editPct = null; render(); curarLuego(); }
   });
   document.addEventListener("submit", function (e) {
     e.preventDefault();
@@ -862,22 +865,35 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (e.key === "Escape" && $sheetRoot.innerHTML) closeSheet();
   });
 
-  // ---------- iOS home-screen height fix ----------
-  // With a translucent status bar, iOS can report a viewport shorter than the screen, leaving a
-  // strip under the bottom bar. In standalone mode the app owns the whole screen, so use its height.
-  function ajustarAltura() {
-    var standalone = window.navigator.standalone === true || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
-    var root = document.documentElement;
-    if (!standalone || !window.screen) { root.style.removeProperty("--app-h"); return; }
-    var vertical = !window.matchMedia || matchMedia("(orientation: portrait)").matches;
-    var alto = vertical ? Math.max(screen.height, screen.width) : Math.min(screen.height, screen.width);
-    // only stretch to cover the missing strip; a much smaller viewport means the keyboard is open
-    if (alto > window.innerHeight && alto - window.innerHeight < 120) root.style.setProperty("--app-h", alto + "px");
-    else if (alto <= window.innerHeight) root.style.removeProperty("--app-h");
+  // ---------- iOS home-screen viewport heal ----------
+  // In standalone mode iOS shrinks the viewport the first time the keyboard opens and never grows it
+  // back, leaving a dead band under the bottom bar. Hiding and re-showing the full-height shell after
+  // the keyboard closes forces WebKit to re-measure and restores the full height.
+  var maxAlto = window.innerHeight;
+  window.addEventListener("resize", function () { maxAlto = Math.max(maxAlto, window.innerHeight); });
+
+  function curarViewport() {
+    if (maxAlto - window.innerHeight <= 4) return;
+    var a = document.activeElement;
+    if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA")) return; // keyboard still open
+    var shell = document.querySelector(".shell");
+    var scroller = document.getElementById("scroller");
+    var st = scroller ? scroller.scrollTop : 0;
+    shell.style.display = "none";
+    void shell.offsetHeight;
+    shell.style.display = "";
+    if (scroller) scroller.scrollTop = st;
   }
-  ajustarAltura();
-  window.addEventListener("resize", ajustarAltura);
-  window.addEventListener("orientationchange", function () { setTimeout(ajustarAltura, 300); });
+  document.addEventListener("focusout", function (e) {
+    var t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) {
+      setTimeout(curarViewport, 140);
+      setTimeout(curarViewport, 600);
+    }
+  });
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") setTimeout(curarViewport, 300);
+  });
 
   // ---------- start ----------
   load();
