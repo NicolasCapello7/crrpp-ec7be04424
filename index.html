@@ -85,6 +85,9 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .chip { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 7px 14px; font-size: 14px; font-weight: 500; color: var(--muted); }
 .chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 .chip .c { opacity: .7; margin-left: 4px; }
+.chips.filtros { flex-wrap: nowrap; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; }
+.chips.filtros::-webkit-scrollbar { display: none; }
+.chips.filtros .chip { flex: 0 0 auto; padding: 7px 12px; font-size: 13.5px; white-space: nowrap; }
 
 /* Ticket cards */
 .list { display: flex; flex-direction: column; gap: 14px; }
@@ -284,7 +287,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 11;
+  var VERSION = 12;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false };
 
   var $main = document.getElementById("main");
@@ -434,7 +437,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
     var conFact = hayFacturacion();
     if (!conFact && ui.filtro === "fact") ui.filtro = "todas";
-    h += '<div class="chips" role="group" aria-label="Filtrar fechas">' +
+    h += '<div class="chips filtros" role="group" aria-label="Filtrar fechas">' +
       chip("todas", "Todas", data.eventos.length) + chip("pend", "Pendientes", t.sinFactN) +
       (conFact ? chip("fact", "Facturadas", t.factN) : "") + chip("cobr", "Cobradas", t.cobrN) + "</div>";
 
