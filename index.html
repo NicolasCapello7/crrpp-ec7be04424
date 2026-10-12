@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#100e15">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Comisiones">
 <title>Comisiones RRPP</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -260,7 +260,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // Persisted data: { pct: number|null, eventos: [...], ultimaCopia: ISO|null }
   var data = { pct: null, eventos: [], ultimaCopia: null };
   var storageOk = true;
-  var VERSION = 9;
+  var VERSION = 10;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null };
 
   var $main = document.getElementById("main");
