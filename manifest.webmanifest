@@ -1,0 +1,17 @@
+{
+  "name": "Comisiones RRPP",
+  "short_name": "Comisiones",
+  "description": "Registro de fechas vendidas, comisiones y cobros.",
+  "lang": "es-AR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#100e15",
+  "theme_color": "#100e15",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

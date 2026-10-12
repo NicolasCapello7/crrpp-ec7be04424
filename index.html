@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#100e15">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Comisiones">
+<title>Comisiones RRPP</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Big+Shoulders+Display:wght@700;800&display=swap">
+<style>
+/* Layout: one phone column; each fecha is a ticket stub (event half + commission stub); fixed bottom tab bar */
+:root {
+  --bg: #100e15;
+  --surface: #1b1823;
+  --surface-2: #26222f;
+  --line: #363042;
+  --fg: #f3f0f7;
+  --muted: #a7a0b4;
+  --accent: #ff6a3d;
+  --accent-ink: #1c0d06;
+  --ok: #43d197;
+  --ok-bg: rgba(67, 209, 151, .14);
+  --warn: #ffb950;
+  --warn-bg: rgba(255, 185, 80, .14);
+  --danger: #ff6b6b;
+  --display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+  --body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f2f7; --surface: #ffffff; --surface-2: #ece9f1; --line: #dbd6e2;
+    --fg: #17141d; --muted: #696374; --accent: #df4416; --accent-ink: #ffffff;
+    --ok: #10825a; --ok-bg: #def3e9; --warn: #9d5e06; --warn-bg: #fbeed6; --danger: #c9302c;
+    color-scheme: light;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.45; -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+
+.app { max-width: 560px; margin: 0 auto; padding-inline: 16px; padding-top: calc(16px + env(safe-area-inset-top, 0px)); padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 18px; }
+
+.top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.brand { font-family: var(--display); font-weight: 800; font-size: 30px; letter-spacing: .02em; text-transform: uppercase; line-height: 1; }
+.brand span { color: var(--accent); }
+.conn { font-size: 12px; color: var(--muted); }
+
+.stack { display: flex; flex-direction: column; gap: 18px; }
+.banner { background: var(--warn-bg); color: var(--warn); border-radius: 12px; padding: 12px 14px; font-size: 14px; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.banner button { background: var(--warn); color: var(--bg); border: 0; border-radius: 999px; padding: 6px 14px; font-weight: 600; }
+
+/* Summary */
+.summary { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.big { font-family: var(--display); font-weight: 800; font-size: 46px; line-height: 1; color: var(--accent); }
+.sub { font-size: 14px; color: var(--muted); }
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; border-top: 1px dashed var(--line); padding-top: 14px; }
+.split .v { font-weight: 700; font-size: 18px; }
+
+/* Chips */
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 7px 14px; font-size: 14px; font-weight: 500; color: var(--muted); }
+.chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.chip .c { opacity: .7; margin-left: 4px; }
+
+/* Ticket cards */
+.list { display: flex; flex-direction: column; gap: 14px; }
+.tkt { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; position: relative; }
+.tkt-main { display: flex; gap: 14px; padding: 14px 16px; align-items: center; width: 100%; background: none; border: 0; text-align: left; }
+.tkt-date { flex: 0 0 auto; width: 52px; text-align: center; border-right: 1px solid var(--line); padding-right: 12px; }
+.tkt-date .d { display: block; font-family: var(--display); font-weight: 800; font-size: 30px; line-height: 1; }
+.tkt-date .m { display: block; font-size: 11px; letter-spacing: .1em; color: var(--muted); font-weight: 600; }
+.tkt-body { min-width: 0; flex: 1; }
+.tkt-body h3 { margin: 0 0 2px; font-size: 16px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.tkt-body .meta { font-size: 13px; color: var(--muted); }
+.tkt-stub { border-top: 1px dashed var(--line); padding: 12px 16px 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; position: relative; }
+.tkt-stub::before, .tkt-stub::after { content: ""; position: absolute; top: -9px; width: 16px; height: 16px; border-radius: 50%; background: var(--bg); border: 1px solid var(--line); }
+.tkt-stub::before { left: -9px; clip-path: inset(0 0 0 50%); }
+.tkt-stub::after { right: -9px; clip-path: inset(0 50% 0 0); }
+.stub-amt { flex: 1; min-width: 0; }
+.stub-amt .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.stub-amt .amt { font-weight: 700; font-size: 20px; }
+.pill { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; margin-top: 4px; }
+.pill.pend { background: var(--warn-bg); color: var(--warn); }
+.pill.ok { background: var(--ok-bg); color: var(--ok); }
+.btn-pay { border: 0; border-radius: 999px; padding: 9px 16px; font-weight: 600; font-size: 14px; background: var(--accent); color: var(--accent-ink); }
+.btn-pay.undo { background: var(--surface-2); color: var(--fg); }
+.tkt.paid .tkt-main { opacity: .72; }
+
+.empty { text-align: center; padding: 36px 20px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); }
+.empty strong { display: block; color: var(--fg); font-size: 17px; margin-bottom: 6px; }
+
+/* Stats */
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; min-width: 0; }
+.tile .v { font-family: var(--display); font-weight: 800; font-size: 28px; line-height: 1.05; overflow-wrap: anywhere; }
+.tile .k { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.section-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.section-h h2 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 22px; text-transform: uppercase; letter-spacing: .02em; }
+.rank { display: flex; flex-direction: column; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+.rank-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; }
+.rank-row .pos { font-family: var(--display); font-weight: 800; font-size: 18px; color: var(--muted); }
+.rank-row .name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-row .name small { color: var(--muted); font-weight: 500; font-size: 13px; }
+.rank-row .val { font-size: 14px; font-weight: 600; }
+.bar { grid-column: 2 / 4; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.rank-row:not(:first-child) .bar i { opacity: .6; }
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 10px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+td.pend { color: var(--warn); font-weight: 600; }
+
+/* Settings */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.card h2 { margin: 0; font-size: 17px; }
+.card p, .card ol { margin: 0; color: var(--muted); font-size: 14px; }
+.card ol { padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.input { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 16px; min-height: 48px; }
+.pct-wrap { position: relative; width: 140px; }
+.pct-wrap .input { padding-right: 34px; }
+.pct-wrap span { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 600; }
+.btn { border: 0; border-radius: 12px; padding: 12px 18px; font-weight: 600; background: var(--accent); color: var(--accent-ink); min-height: 48px; }
+.btn.ghost { background: var(--surface-2); color: var(--fg); }
+.btn.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+.btn:disabled { opacity: .5; }
+.confirm { background: var(--warn-bg); color: var(--warn); border-radius: 12px; padding: 12px 14px; font-size: 14px; display: flex; flex-direction: column; gap: 10px; }
+.file-btn { position: relative; overflow: hidden; display: inline-flex; align-items: center; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+/* Bottom bar + FAB */
+.nav { position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); z-index: 10; }
+.nav-inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); }
+.nav button { background: none; border: 0; padding: 12px 4px 10px; font-size: 12px; font-weight: 600; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.nav button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.nav button[aria-current="page"] { color: var(--accent); }
+.fab { position: fixed; right: max(16px, calc(50% - 264px)); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 11; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 14px 20px; font-size: 15px; box-shadow: 0 8px 24px rgba(0,0,0,.35); display: flex; align-items: center; gap: 6px; }
+
+/* Sheet */
+.scrim { position: fixed; inset: 0; background: rgba(8, 6, 12, .6); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: var(--surface); width: 100%; max-width: 560px; border-radius: 20px 20px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); max-height: 92%; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.sheet-h { display: flex; justify-content: space-between; align-items: center; }
+.sheet-h h2 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 24px; text-transform: uppercase; }
+.x { background: var(--surface-2); border: 0; border-radius: 999px; width: 36px; height: 36px; font-size: 18px; line-height: 1; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid2 > * { min-width: 0; }
+.preview { background: var(--surface-2); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.preview .amt { font-weight: 700; font-size: 20px; color: var(--accent); }
+.check { display: flex; gap: 10px; align-items: center; font-weight: 600; }
+.check input { width: 22px; height: 22px; accent-color: var(--accent); }
+.err { color: var(--danger); font-size: 13px; min-height: 1em; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.actions .btn:first-child { flex: 1; }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(140px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 14px; font-weight: 600; z-index: 30; max-width: calc(100% - 32px); }
+
+@media (max-width: 360px) { .big { font-size: 38px; } .grid2 { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: no-preference) { .sheet { animation: up .22s ease-out; } @keyframes up { from { transform: translateY(24px); opacity: .6; } } }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="top">
+    <div class="brand">Mis <span>comisiones</span></div>
+    <div class="conn" id="conn"></div>
+  </div>
+  <main id="main"></main>
+</div>
+
+<button class="fab" id="fab" type="button" data-action="new">
+  <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+  Nueva fecha
+</button>
+
+<nav class="nav" aria-label="Secciones">
+  <div class="nav-inner">
+    <button type="button" data-view="fechas" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/><path d="M14 5v12" stroke-dasharray="2 2"/></svg>
+      Fechas
+    </button>
+    <button type="button" data-view="rendimiento">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>
+      Rendimiento
+    </button>
+    <button type="button" data-view="ajustes">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>
+      Ajustes
+    </button>
+  </div>
+</nav>
+
+<div id="sheet-root"></div>
+<div id="toast-root"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var STORE_KEY = "comisiones-rrpp-v1";
+  var MESES = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+  var MESES_LARGO = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  var money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+  var intf = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
+  var pctf = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
+
+  // Persisted data: { pct: number|null, eventos: [...], ultimaCopia: ISO|null }
+  var data = { pct: null, eventos: [], ultimaCopia: null };
+  var storageOk = true;
+  var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null };
+
+  var $main = document.getElementById("main");
+  var $conn = document.getElementById("conn");
+  var $fab = document.getElementById("fab");
+  var $sheetRoot = document.getElementById("sheet-root");
+  var $toastRoot = document.getElementById("toast-root");
+
+  // ---------- storage ----------
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (raw) {
+        var d = JSON.parse(raw);
+        data.pct = typeof d.pct === "number" ? d.pct : null;
+        data.eventos = Array.isArray(d.eventos) ? d.eventos : [];
+        data.ultimaCopia = d.ultimaCopia || null;
+      }
+    } catch (e) { storageOk = false; }
+  }
+  function persist() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); storageOk = true; return true; }
+    catch (e) { storageOk = false; toast("No se pudo guardar en el celular. Revisá que no estés en modo privado."); return false; }
+  }
+  function nuevoId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+  // ---------- helpers ----------
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function hoy() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function partes(f) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(f || "");
+    return m ? { y: +m[1], m: +m[2], d: +m[3] } : null;
+  }
+  function fechaCorta(f) {
+    var p = partes(f);
+    return p ? String(p.d).padStart(2, "0") + "/" + String(p.m).padStart(2, "0") + "/" + String(p.y).slice(2) : "";
+  }
+  // Accepts "1.250.000", "1250000", "1.250.000,50", "$ 1250000.5"
+  function parseNum(s) {
+    s = String(s == null ? "" : s).trim().replace(/[$\s]/g, "");
+    if (!s) return NaN;
+    if (s.indexOf(",") >= 0) s = s.replace(/\./g, "").replace(",", ".");
+    else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
+    return /^\d*\.?\d+$/.test(s) ? Number(s) : NaN;
+  }
+  function pctEf() { return data.pct == null ? 0 : data.pct; }
+  function pctDe(ev) { return ev.cobrado && typeof ev.pctCobrado === "number" ? ev.pctCobrado : pctEf(); }
+  function comision(ev) { return (Number(ev.facturado) || 0) * pctDe(ev) / 100; }
+  function buscar(id) { return data.eventos.find(function (e) { return e.id === id; }); }
+  function toast(msg) {
+    $toastRoot.innerHTML = '<div class="toast" role="status">' + esc(msg) + "</div>";
+    clearTimeout(toast.t);
+    toast.t = setTimeout(function () { $toastRoot.innerHTML = ""; }, 2600);
+  }
+  function ordenados() {
+    return data.eventos.slice().sort(function (a, b) {
+      return (b.fecha || "").localeCompare(a.fecha || "") || (b.creado || "").localeCompare(a.creado || "");
+    });
+  }
+  function diasDesde(iso) { return iso ? (Date.now() - new Date(iso).getTime()) / 864e5 : Infinity; }
+
+  // ---------- render ----------
+  function render() {
+    $conn.textContent = storageOk ? "Guardado en este celular" : "Sin guardado";
+    $fab.hidden = ui.view === "ajustes";
+    document.querySelectorAll(".nav [data-view]").forEach(function (b) {
+      if (b.getAttribute("data-view") === ui.view) b.setAttribute("aria-current", "page");
+      else b.removeAttribute("aria-current");
+    });
+
+    var html = "";
+    if (!storageOk) {
+      html += '<div class="banner">Este navegador no deja guardar datos (¿modo privado?). Abrí la app desde el ícono de inicio o desde Safari normal.</div>';
+    } else if (data.pct == null && ui.view !== "ajustes") {
+      html += '<div class="banner"><span>Configurá tu % de comisión para calcular lo que te deben.</span><button type="button" data-view="ajustes">Configurar</button></div>';
+    } else if (data.eventos.length >= 3 && diasDesde(data.ultimaCopia) > 30 && ui.view !== "ajustes") {
+      html += '<div class="banner"><span>' + (data.ultimaCopia ? "Hace más de un mes que no guardás una copia." : "Todavía no guardaste una copia de tus datos.") + '</span><button type="button" data-view="ajustes">Hacer copia</button></div>';
+    }
+
+    if (ui.view === "fechas") html += viewFechas();
+    else if (ui.view === "rendimiento") html += viewRendimiento();
+    else html += viewAjustes();
+
+    var prevPct = document.getElementById("pct-input");
+    var keep = prevPct && document.activeElement === prevPct ? prevPct.value : null;
+    $main.innerHTML = '<div class="stack">' + html + "</div>";
+    if (keep != null) { var np = document.getElementById("pct-input"); np.value = keep; np.focus(); }
+  }
+
+  function totales() {
+    var t = { pend: 0, pendN: 0, cobr: 0, cobrN: 0, entradas: 0, facturado: 0, com: 0 };
+    data.eventos.forEach(function (ev) {
+      var c = comision(ev);
+      t.entradas += Number(ev.entradas) || 0;
+      t.facturado += Number(ev.facturado) || 0;
+      t.com += c;
+      if (ev.cobrado) { t.cobr += c; t.cobrN++; } else { t.pend += c; t.pendN++; }
+    });
+    return t;
+  }
+
+  function viewFechas() {
+    var t = totales();
+    var h = '<section class="summary" aria-label="Resumen de cobros">' +
+      '<div><div class="eyebrow">Te deben</div>' +
+      '<div class="big num">' + money.format(t.pend) + "</div>" +
+      '<div class="sub">' + (t.pendN === 1 ? "1 fecha pendiente de cobro" : t.pendN + " fechas pendientes de cobro") +
+      (data.pct != null ? " · comisión " + pctf.format(data.pct) + "%" : "") + "</div></div>" +
+      '<div class="split">' +
+      '<div><div class="eyebrow">Ya cobrado</div><div class="v num">' + money.format(t.cobr) + "</div></div>" +
+      '<div><div class="eyebrow">Total ganado</div><div class="v num">' + money.format(t.com) + "</div></div>" +
+      "</div></section>";
+
+    h += '<div class="chips" role="group" aria-label="Filtrar fechas">' +
+      chip("todas", "Todas", data.eventos.length) + chip("pend", "Pendientes", t.pendN) + chip("cobr", "Cobradas", t.cobrN) + "</div>";
+
+    var list = ordenados().filter(function (ev) {
+      return ui.filtro === "todas" || (ui.filtro === "pend" ? !ev.cobrado : !!ev.cobrado);
+    });
+
+    if (!data.eventos.length) {
+      h += '<div class="empty"><strong>Todavía no cargaste fechas</strong>Tocá <b>Nueva fecha</b>, poné el evento, las entradas y el monto que ves en Bombo, y la app calcula tu comisión.</div>';
+    } else if (!list.length) {
+      h += '<div class="empty">' + (ui.filtro === "pend" ? "No tenés fechas pendientes de cobro." : "Todavía no marcaste fechas como cobradas.") + "</div>";
+    } else {
+      h += '<div class="list">' + list.map(card).join("") + "</div>";
+    }
+    return h;
+  }
+
+  function chip(id, label, count) {
+    return '<button type="button" class="chip" data-filtro="' + id + '" aria-pressed="' + (ui.filtro === id) + '">' +
+      label + '<span class="c num">' + count + "</span></button>";
+  }
+
+  function card(ev) {
+    var p = partes(ev.fecha) || { d: 0, m: 1 };
+    return '<article class="tkt' + (ev.cobrado ? " paid" : "") + '">' +
+      '<button type="button" class="tkt-main" data-edit="' + esc(ev.id) + '" aria-label="Editar ' + esc(ev.nombre) + '">' +
+      '<div class="tkt-date"><span class="d num">' + String(p.d).padStart(2, "0") + '</span><span class="m">' + MESES[p.m - 1] + "</span></div>" +
+      '<div class="tkt-body"><h3>' + esc(ev.nombre) + "</h3>" +
+      '<div class="meta num">' + intf.format(Number(ev.entradas) || 0) + " entradas · " + money.format(Number(ev.facturado) || 0) + " facturado</div></div>" +
+      "</button>" +
+      '<div class="tkt-stub">' +
+      '<div class="stub-amt"><div class="lbl">Tu comisión</div><div class="amt num">' + money.format(comision(ev)) + "</div>" +
+      (ev.cobrado
+        ? '<span class="pill ok">Cobrada' + (ev.fechaCobro ? " el " + fechaCorta(ev.fechaCobro) : "") + "</span>"
+        : '<span class="pill pend">Pendiente</span>') +
+      "</div>" +
+      (ev.cobrado
+        ? '<button type="button" class="btn-pay undo" data-toggle="' + esc(ev.id) + '">Volver a pendiente</button>'
+        : '<button type="button" class="btn-pay" data-toggle="' + esc(ev.id) + '">Marcar cobrada</button>') +
+      "</div></article>";
+  }
+
+  function viewRendimiento() {
+    var evs = data.eventos;
+    if (!evs.length) {
+      return '<div class="empty"><strong>Sin datos todavía</strong>Cuando cargues tus fechas vas a ver acá cuáles vendieron más, tu precio promedio por entrada y lo que ganaste por mes.</div>';
+    }
+    var t = totales();
+    var prom = t.entradas / evs.length;
+    var ticket = t.entradas ? t.facturado / t.entradas : 0;
+    var h = '<div class="tiles">' +
+      tile(intf.format(evs.length), "fechas trabajadas") +
+      tile(intf.format(t.entradas), "entradas vendidas") +
+      tile(money.format(t.facturado), "facturado total") +
+      tile(money.format(t.com), "comisión total") +
+      tile(intf.format(Math.round(prom)), "entradas por fecha (promedio)") +
+      tile(money.format(ticket), "precio promedio por entrada") +
+      "</div>";
+
+    var key = ui.rankBy;
+    var top = evs.slice().sort(function (a, b) { return (Number(b[key]) || 0) - (Number(a[key]) || 0); }).slice(0, 10);
+    var max = Math.max.apply(null, top.map(function (e) { return Number(e[key]) || 0; }).concat([1]));
+    h += '<div class="section-h"><h2>Mejores fechas</h2><div class="chips" role="group" aria-label="Ordenar ranking">' +
+      '<button type="button" class="chip" data-rank="entradas" aria-pressed="' + (key === "entradas") + '">Entradas</button>' +
+      '<button type="button" class="chip" data-rank="facturado" aria-pressed="' + (key === "facturado") + '">Facturado</button>' +
+      "</div></div>";
+    h += '<div class="rank">' + top.map(function (ev, i) {
+      var v = Number(ev[key]) || 0;
+      return '<div class="rank-row"><span class="pos num">' + (i + 1) + '</span><span class="name">' + esc(ev.nombre) +
+        " <small>" + fechaCorta(ev.fecha) + "</small></span>" +
+        '<span class="val num">' + (key === "entradas" ? intf.format(v) : money.format(v)) + "</span>" +
+        '<span class="bar"><i style="width:' + Math.max(2, v / max * 100).toFixed(1) + '%"></i></span></div>';
+    }).join("") + "</div>";
+
+    var meses = {};
+    evs.forEach(function (ev) {
+      var k = (ev.fecha || "").slice(0, 7);
+      if (!meses[k]) meses[k] = { n: 0, ent: 0, com: 0, pend: 0 };
+      var c = comision(ev);
+      meses[k].n++; meses[k].ent += Number(ev.entradas) || 0; meses[k].com += c;
+      if (!ev.cobrado) meses[k].pend += c;
+    });
+    var keys = Object.keys(meses).sort().reverse();
+    h += '<div class="section-h"><h2>Por mes</h2></div>';
+    h += '<div class="table-wrap"><table><thead><tr><th>Mes</th><th>Fechas</th><th>Entradas</th><th>Comisión</th><th>Pendiente</th></tr></thead><tbody>' +
+      keys.map(function (k) {
+        var m = meses[k], p = partes(k + "-01");
+        var label = p ? MESES_LARGO[p.m - 1] + " " + p.y : "Sin fecha";
+        return "<tr><td>" + label + '</td><td class="num">' + m.n + '</td><td class="num">' + intf.format(m.ent) +
+          '</td><td class="num">' + money.format(m.com) + '</td><td class="num' + (m.pend > 0 ? " pend" : "") + '">' + money.format(m.pend) + "</td></tr>";
+      }).join("") + "</tbody></table></div>";
+    return h;
+  }
+
+  function tile(v, k) {
+    return '<div class="tile"><div class="v num">' + v + '</div><div class="k">' + k + "</div></div>";
+  }
+
+  function viewAjustes() {
+    var h = '<section class="card"><h2>Tu comisión</h2>' +
+      "<p>Porcentaje que cobrás sobre el monto facturado de cada fecha.</p>" +
+      '<form id="pct-form" class="row" novalidate>' +
+      '<div class="pct-wrap"><input id="pct-input" class="input" type="text" inputmode="decimal" aria-label="Porcentaje de comisión" value="' +
+      (data.pct != null ? esc(pctf.format(data.pct)) : "") + '" placeholder="10"><span>%</span></div>' +
+      '<button class="btn" type="submit">Guardar</button></form>' +
+      "<p>Si lo cambiás, se recalculan las fechas <b>pendientes</b>. Las que ya marcaste como cobradas conservan el % con el que se cobraron.</p>" +
+      '<div class="err" id="pct-err"></div></section>';
+
+    h += '<section class="card"><h2>Copia de seguridad</h2>' +
+      "<p>Tus datos se guardan solo en este celular. Guardá una copia de vez en cuando (en Archivos o iCloud Drive) para no perderlos si borrás la app o cambiás de teléfono.</p>" +
+      '<p>Última copia: <b>' + (data.ultimaCopia ? fechaCorta(data.ultimaCopia.slice(0, 10)) : "nunca") + "</b></p>" +
+      '<div class="row">' +
+      '<button class="btn" type="button" data-action="export-json"' + (data.eventos.length ? "" : " disabled") + ">Guardar copia</button>" +
+      '<label class="btn ghost file-btn">Restaurar copia<input type="file" id="import-file" accept=".json,application/json"></label>' +
+      "</div>";
+    if (ui.pendingImport) {
+      var n = ui.pendingImport.eventos.length;
+      h += '<div class="confirm"><span>Vas a reemplazar tus ' + data.eventos.length + " fechas actuales por las " + n + " de la copia" +
+        (ui.pendingImport.exportado ? " del " + fechaCorta(String(ui.pendingImport.exportado).slice(0, 10)) : "") + ". Esto no se puede deshacer.</span>" +
+        '<div class="row"><button class="btn" type="button" data-action="import-confirm">Reemplazar</button>' +
+        '<button class="btn ghost" type="button" data-action="import-cancel">Cancelar</button></div></div>';
+    }
+    h += '<div class="err" id="import-err"></div></section>';
+
+    h += '<section class="card"><h2>Planilla para Excel</h2>' +
+      "<p>Descargá todas tus fechas con entradas, facturado, comisión y estado de cobro, para abrir en Excel o Google Sheets.</p>" +
+      '<div class="row"><button class="btn ghost" type="button" data-action="export-csv"' + (data.eventos.length ? "" : " disabled") + ">Descargar planilla</button></div></section>";
+
+    h += '<section class="card"><h2>Instalar en tu iPhone</h2><ol>' +
+      "<li>Abrí este link en <b>Safari</b>.</li>" +
+      "<li>Tocá el botón <b>Compartir</b> (el cuadrado con la flecha).</li>" +
+      "<li>Elegí <b>Agregar a inicio</b> y confirmá.</li>" +
+      "</ol><p>Usá siempre la app desde ese ícono: ahí quedan tus datos.</p></section>";
+    return h;
+  }
+
+  // ---------- sheet (new / edit) ----------
+  var sheet = { id: null, armedDelete: false };
+
+  function openSheet(id) {
+    var ev = id ? buscar(id) : null;
+    if (id && !ev) return;
+    sheet.id = id || null;
+    sheet.armedDelete = false;
+    var f = ev || { nombre: "", fecha: hoy(), entradas: "", facturado: "", cobrado: false, fechaCobro: null };
+    $sheetRoot.innerHTML =
+      '<div class="scrim" data-action="close-bg"><form class="sheet" id="ev-form" role="dialog" aria-modal="true" aria-labelledby="sheet-title" novalidate>' +
+      '<div class="sheet-h"><h2 id="sheet-title">' + (ev ? "Editar fecha" : "Nueva fecha") + '</h2><button type="button" class="x" data-action="close" aria-label="Cerrar">✕</button></div>' +
+      '<div class="field"><label for="f-nombre">Evento</label><input id="f-nombre" class="input" type="text" autocomplete="off" placeholder="Ej: Solomun · Mute" value="' + esc(f.nombre) + '"></div>' +
+      '<div class="field"><label for="f-fecha">Fecha del evento</label><input id="f-fecha" class="input" type="date" value="' + esc(f.fecha) + '"></div>' +
+      '<div class="grid2">' +
+      '<div class="field"><label for="f-entradas">Entradas vendidas</label><input id="f-entradas" class="input" type="text" inputmode="numeric" placeholder="0" value="' + esc(f.entradas === "" ? "" : intf.format(f.entradas)) + '"></div>' +
+      '<div class="field"><label for="f-facturado">Monto facturado ($)</label><input id="f-facturado" class="input" type="text" inputmode="decimal" placeholder="0" value="' + esc(f.facturado === "" ? "" : intf.format(f.facturado)) + '"></div>' +
+      "</div>" +
+      '<div class="preview"><span class="sub">Tu comisión<span id="f-pct"></span></span><span class="amt num" id="f-com">$ 0</span></div>' +
+      (ev ? '<label class="check"><input type="checkbox" id="f-cobrado"' + (f.cobrado ? " checked" : "") + "> Ya la cobré</label>" +
+        '<div class="field" id="f-fc-wrap"' + (f.cobrado ? "" : " hidden") + '><label for="f-fcobro">Fecha de cobro</label><input id="f-fcobro" class="input" type="date" value="' + esc(f.fechaCobro || hoy()) + '"></div>' : "") +
+      '<div class="err" id="f-err"></div>' +
+      '<div class="actions"><button class="btn" type="submit">Guardar</button>' +
+      (ev ? '<button class="btn danger" type="button" data-action="delete" id="f-del">Eliminar</button>' : "") +
+      "</div></form></div>";
+    updatePreview();
+  }
+
+  function closeSheet() { $sheetRoot.innerHTML = ""; sheet.id = null; }
+
+  function updatePreview() {
+    var fac = parseNum((document.getElementById("f-facturado") || {}).value);
+    var ev = sheet.id ? buscar(sheet.id) : null;
+    var cb = document.getElementById("f-cobrado");
+    var p = ev && ev.cobrado && cb && cb.checked && typeof ev.pctCobrado === "number" ? ev.pctCobrado : pctEf();
+    var com = document.getElementById("f-com"), lp = document.getElementById("f-pct");
+    if (com) com.textContent = money.format(isNaN(fac) ? 0 : fac * p / 100);
+    if (lp) lp.textContent = " (" + pctf.format(p) + "%)";
+  }
+
+  function saveSheet() {
+    var err = document.getElementById("f-err");
+    var nombre = document.getElementById("f-nombre").value.trim();
+    var fecha = document.getElementById("f-fecha").value;
+    var entradas = parseNum(document.getElementById("f-entradas").value || "0");
+    var facturado = parseNum(document.getElementById("f-facturado").value || "0");
+    if (!nombre) { err.textContent = "Poné el nombre del evento."; return; }
+    if (!partes(fecha)) { err.textContent = "Elegí la fecha del evento."; return; }
+    if (isNaN(entradas) || entradas < 0 || Math.floor(entradas) !== entradas) { err.textContent = "Las entradas tienen que ser un número entero."; return; }
+    if (isNaN(facturado) || facturado < 0) { err.textContent = "Revisá el monto facturado: solo números, por ejemplo 1.250.000"; return; }
+
+    var ev = sheet.id ? buscar(sheet.id) : null;
+    var antes = ev ? Object.assign({}, ev) : null;
+    if (ev) {
+      ev.nombre = nombre; ev.fecha = fecha; ev.entradas = entradas; ev.facturado = facturado;
+      var cb = document.getElementById("f-cobrado");
+      if (cb && cb.checked) {
+        ev.pctCobrado = antes.cobrado && typeof antes.pctCobrado === "number" ? antes.pctCobrado : pctEf();
+        ev.cobrado = true;
+        ev.fechaCobro = document.getElementById("f-fcobro").value || hoy();
+      } else {
+        ev.cobrado = false; ev.fechaCobro = null; ev.pctCobrado = null;
+      }
+    } else {
+      data.eventos.push({ id: nuevoId(), nombre: nombre, fecha: fecha, entradas: entradas, facturado: facturado,
+        cobrado: false, fechaCobro: null, pctCobrado: null, creado: new Date().toISOString() });
+    }
+    if (!persist()) {
+      if (ev) Object.assign(ev, antes); else data.eventos.pop();
+      err.textContent = "No se pudo guardar en el celular.";
+      return;
+    }
+    closeSheet();
+    render();
+    toast(ev ? "Fecha actualizada" : "Fecha agregada");
+  }
+
+  function deleteFromSheet() {
+    var b = document.getElementById("f-del");
+    if (!sheet.armedDelete) {
+      sheet.armedDelete = true;
+      b.textContent = "Tocá de nuevo para eliminar";
+      clearTimeout(deleteFromSheet.t);
+      deleteFromSheet.t = setTimeout(function () {
+        sheet.armedDelete = false;
+        var bb = document.getElementById("f-del"); if (bb) bb.textContent = "Eliminar";
+      }, 4000);
+      return;
+    }
+    var antes = data.eventos;
+    data.eventos = data.eventos.filter(function (e) { return e.id !== sheet.id; });
+    if (!persist()) { data.eventos = antes; return; }
+    closeSheet();
+    render();
+    toast("Fecha eliminada");
+  }
+
+  function togglePago(id) {
+    var ev = buscar(id);
+    if (!ev) return;
+    var antes = Object.assign({}, ev);
+    if (ev.cobrado) { ev.cobrado = false; ev.fechaCobro = null; ev.pctCobrado = null; }
+    else { ev.cobrado = true; ev.fechaCobro = hoy(); ev.pctCobrado = pctEf(); }
+    if (!persist()) { Object.assign(ev, antes); return; }
+    render();
+    toast(ev.cobrado ? "Marcada como cobrada" : "Volvió a pendiente");
+  }
+
+  function savePct() {
+    var input = document.getElementById("pct-input"), err = document.getElementById("pct-err");
+    var v = parseNum(input.value.replace("%", ""));
+    if (isNaN(v) || v < 0 || v > 100) { err.textContent = "Poné un porcentaje entre 0 y 100, por ejemplo 10 o 12,5."; return; }
+    var antes = data.pct;
+    data.pct = v;
+    if (!persist()) { data.pct = antes; return; }
+    input.blur();
+    render();
+    toast("Comisión guardada: " + pctf.format(v) + "%");
+  }
+
+  // ---------- backup / export ----------
+  function entregarArchivo(contenido, nombre, tipo) {
+    var blob = new Blob([contenido], { type: tipo });
+    var file = null;
+    try { file = new File([blob], nombre, { type: tipo }); } catch (e) { file = null; }
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      return navigator.share({ files: [file], title: nombre }).then(function () { return true; }, function (e) {
+        return e && e.name === "AbortError" ? false : descargar(blob, nombre);
+      });
+    }
+    return Promise.resolve(descargar(blob, nombre));
+  }
+  function descargar(blob, nombre) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = nombre;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    return true;
+  }
+
+  function exportJson() {
+    var payload = { app: "comisiones-rrpp", version: 1, exportado: new Date().toISOString(), pct: data.pct, eventos: data.eventos };
+    entregarArchivo(JSON.stringify(payload, null, 2), "comisiones-rrpp-" + hoy() + ".json", "application/json").then(function (ok) {
+      if (!ok) return;
+      data.ultimaCopia = new Date().toISOString();
+      persist();
+      render();
+      toast("Copia lista");
+    });
+  }
+
+  function exportCsv() {
+    function n(x) { return String(Math.round(x * 100) / 100).replace(".", ","); }
+    function q(s) { s = String(s == null ? "" : s); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+    var filas = [["Evento", "Fecha", "Entradas", "Facturado", "% comisión", "Comisión", "Estado", "Fecha de cobro"].join(";")];
+    ordenados().forEach(function (ev) {
+      filas.push([q(ev.nombre), fechaCorta(ev.fecha), ev.entradas || 0, n(Number(ev.facturado) || 0), n(pctDe(ev)), n(comision(ev)),
+        ev.cobrado ? "Cobrada" : "Pendiente", ev.cobrado ? fechaCorta(ev.fechaCobro) : ""].join(";"));
+    });
+    entregarArchivo("﻿" + filas.join("\r\n"), "comisiones-rrpp-" + hoy() + ".csv", "text/csv").then(function (ok) {
+      if (ok) toast("Planilla lista");
+    });
+  }
+
+  function leerImport(file) {
+    var err = document.getElementById("import-err");
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var d = JSON.parse(reader.result);
+        if (!d || d.app !== "comisiones-rrpp" || !Array.isArray(d.eventos)) throw new Error("formato");
+        var eventos = d.eventos.filter(function (e) { return e && typeof e.nombre === "string" && partes(e.fecha); }).map(function (e) {
+          return { id: String(e.id || nuevoId()), nombre: e.nombre, fecha: e.fecha, entradas: Number(e.entradas) || 0, facturado: Number(e.facturado) || 0,
+            cobrado: !!e.cobrado, fechaCobro: e.cobrado ? (e.fechaCobro || null) : null,
+            pctCobrado: e.cobrado && typeof e.pctCobrado === "number" ? e.pctCobrado : null, creado: e.creado || new Date().toISOString() };
+        });
+        ui.pendingImport = { eventos: eventos, pct: typeof d.pct === "number" ? d.pct : null, exportado: d.exportado || null };
+        render();
+      } catch (e) {
+        if (err) err.textContent = "Ese archivo no es una copia de esta app. Elegí el archivo comisiones-rrpp-….json que guardaste.";
+      }
+    };
+    reader.onerror = function () { if (err) err.textContent = "No se pudo leer el archivo."; };
+    reader.readAsText(file);
+  }
+
+  function confirmarImport() {
+    var p = ui.pendingImport;
+    if (!p) return;
+    var antes = { pct: data.pct, eventos: data.eventos };
+    data.eventos = p.eventos;
+    if (p.pct != null) data.pct = p.pct;
+    if (!persist()) { data.pct = antes.pct; data.eventos = antes.eventos; return; }
+    ui.pendingImport = null;
+    render();
+    toast("Copia restaurada: " + p.eventos.length + " fechas");
+  }
+
+  // ---------- events ----------
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-toggle],[data-action]");
+    if (!t) return;
+    if (t.hasAttribute("data-view")) { ui.view = t.getAttribute("data-view"); render(); window.scrollTo(0, 0); return; }
+    if (t.hasAttribute("data-filtro")) { ui.filtro = t.getAttribute("data-filtro"); render(); return; }
+    if (t.hasAttribute("data-rank")) { ui.rankBy = t.getAttribute("data-rank"); render(); return; }
+    if (t.hasAttribute("data-edit")) { openSheet(t.getAttribute("data-edit")); return; }
+    if (t.hasAttribute("data-toggle")) { togglePago(t.getAttribute("data-toggle")); return; }
+    var a = t.getAttribute("data-action");
+    if (a === "new") openSheet(null);
+    else if (a === "close") closeSheet();
+    else if (a === "close-bg" && e.target === t) closeSheet();
+    else if (a === "delete") deleteFromSheet();
+    else if (a === "export-json") exportJson();
+    else if (a === "export-csv") exportCsv();
+    else if (a === "import-confirm") confirmarImport();
+    else if (a === "import-cancel") { ui.pendingImport = null; render(); }
+  });
+  document.addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (e.target.id === "ev-form") saveSheet();
+    else if (e.target.id === "pct-form") savePct();
+  });
+  document.addEventListener("input", function (e) {
+    if (e.target.id === "f-facturado") updatePreview();
+  });
+  document.addEventListener("change", function (e) {
+    if (e.target.id === "f-cobrado") {
+      document.getElementById("f-fc-wrap").hidden = !e.target.checked;
+      updatePreview();
+    } else if (e.target.id === "import-file" && e.target.files && e.target.files[0]) {
+      leerImport(e.target.files[0]);
+      e.target.value = "";
+    }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && $sheetRoot.innerHTML) closeSheet();
+  });
+
+  // ---------- start ----------
+  load();
+  render();
+  if (navigator.storage && navigator.storage.persist) { navigator.storage.persist().catch(function () {}); }
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+  }
+})();
+</script>
+</body>
+</html>
