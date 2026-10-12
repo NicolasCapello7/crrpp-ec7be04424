@@ -735,7 +735,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   // ---------- events ----------
   document.addEventListener("click", function (e) {
-    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-toggle],[data-action]");
+    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-pct],[data-toggle],[data-action]");
     if (!t) return;
     if (t.hasAttribute("data-view")) { ui.view = t.getAttribute("data-view"); render(); document.getElementById("scroller").scrollTop = 0; return; }
     if (t.hasAttribute("data-filtro")) { ui.filtro = t.getAttribute("data-filtro"); render(); return; }
