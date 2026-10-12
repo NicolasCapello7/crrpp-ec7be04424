@@ -118,7 +118,15 @@ select.input { -webkit-appearance: none; appearance: none; padding-right: 40px; 
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23a7a0b4' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 14px center; }
 .nueva-prod { display: flex; flex-direction: column; gap: 10px; background: var(--surface-2); border-radius: 12px; padding: 12px; }
-#f-fact-block { display: flex; flex-direction: column; gap: 12px; }
+/* Facturada / Cobrada side by side; the cobro date shows under its check */
+.estado-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+.estado-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; background: var(--surface-2); border-radius: 12px; padding: 12px; }
+.estado-col .check { min-height: 24px; }
+.estado-col .input { min-height: 42px; padding: 8px 10px; font-size: 15px; }
+.pct-wrap.full { width: 100%; }
+.grid2 > .preview { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 8px 12px; align-self: end; min-height: 48px; }
+.grid2 > .preview .sub { font-size: 12px; }
+.grid2 > .preview .amt { font-size: 18px; }
 .prod-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .prod-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
 .prod-row:first-child { border-top: 0; }
@@ -212,7 +220,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
 /* Sheet */
 .scrim { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(8, 6, 12, .6); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
-.sheet { background: var(--surface); width: 100%; max-width: 560px; border-radius: 20px 20px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); max-height: 92%; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 14px; }
+.sheet { background: var(--surface); width: 100%; max-width: 560px; border-radius: 20px 20px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); max-height: 92%; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 12px; }
 .sheet-h { display: flex; justify-content: space-between; align-items: center; }
 .sheet-h h2 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 24px; text-transform: uppercase; }
 .x { background: var(--surface-2); border: 0; border-radius: 999px; width: 36px; height: 36px; font-size: 18px; line-height: 1; }
@@ -287,7 +295,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 12;
+  var VERSION = 13;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false };
 
   var $main = document.getElementById("main");
@@ -757,13 +765,15 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       '<div class="scrim" data-action="close-bg"><form class="sheet" id="ev-form" role="dialog" aria-modal="true" aria-labelledby="sheet-title" novalidate>' +
       '<div class="sheet-h"><h2 id="sheet-title">' + (ev ? "Editar fecha" : "Nueva fecha") + '</h2><button type="button" class="x" data-action="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="field"><label for="f-nombre">Evento</label><input id="f-nombre" class="input" type="text" autocomplete="off" placeholder="Ej: Solomun · Mute" value="' + esc(f.nombre) + '"></div>' +
-      '<div class="field"><label for="f-fecha">Fecha del evento</label><input id="f-fecha" class="input" type="date" value="' + esc(f.fecha) + '"></div>' +
+      '<div class="grid2">' +
+      '<div class="field"><label for="f-fecha">Fecha</label><input id="f-fecha" class="input" type="date" value="' + esc(f.fecha) + '"></div>' +
       '<div class="field"><label for="f-prod">Productora</label><select id="f-prod" class="input">' +
       '<option value="">Sin productora</option>' +
       data.productoras.slice().sort(function (a, b) { return a.nombre.localeCompare(b.nombre, "es"); }).map(function (p) {
         return '<option value="' + esc(p.id) + '"' + (f.productoraId === p.id ? " selected" : "") + ">" + esc(p.nombre) + "</option>";
       }).join("") +
       '<option value="__nueva">+ Agregar productora nueva…</option></select></div>' +
+      "</div>" +
       '<div class="nueva-prod" id="f-np-wrap" hidden>' +
       '<div class="field"><label for="f-np-nombre">Nombre de la productora</label><input id="f-np-nombre" class="input" type="text" autocomplete="off" placeholder="Ej: Mandarine"></div>' +
       '<label class="check"><input type="checkbox" id="f-np-factura"> Pide factura para pagar</label></div>' +
@@ -771,15 +781,18 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       '<div class="field"><label for="f-entradas">Entradas vendidas</label><input id="f-entradas" class="input miles num" type="text" inputmode="numeric" autocomplete="off" placeholder="0" value="' + esc(f.entradas === "" ? "" : intf.format(f.entradas)) + '"></div>' +
       '<div class="field"><label for="f-facturado">Monto facturado</label><div class="money"><span>$</span><input id="f-facturado" class="input miles" type="text" inputmode="numeric" autocomplete="off" placeholder="0" value="' + esc(f.facturado === "" ? "" : intf.format(f.facturado)) + '"></div></div>' +
       "</div>" +
-      '<div class="field"><label for="f-pctev">Comisión de esta fecha</label>' +
-      '<div class="pct-wrap"><input id="f-pctev" class="input num" type="text" inputmode="decimal" autocomplete="off" placeholder="' + esc(pctf.format(pctEf())) + '" value="' + esc(pctTxt) + '"><span>%</span></div>' +
-      '<div class="hint">Tu % general es ' + (data.pct == null ? "0% (no lo configuraste)" : pctf.format(data.pct) + "%") + ". Cambialo acá solo si esta fecha se paga distinto.</div></div>" +
+      '<div class="grid2">' +
+      '<div class="field"><label for="f-pctev">Comisión</label>' +
+      '<div class="pct-wrap full"><input id="f-pctev" class="input num" type="text" inputmode="decimal" autocomplete="off" placeholder="' + esc(pctf.format(pctEf())) + '" value="' + esc(pctTxt) + '"><span>%</span></div></div>' +
       '<div class="preview"><span class="sub">Tu comisión<span id="f-pct"></span></span><span class="amt num" id="f-com">$ 0</span></div>' +
-      (ev ? '<div id="f-fact-block"' + (pideFactura(ev) ? "" : " hidden") + '>' +
-        '<label class="check"><input type="checkbox" id="f-facturada"' + (f.facturada ? " checked" : "") + "> Ya la facturé</label>" +
-        '<div class="field" id="f-ff-wrap"' + (f.facturada ? "" : " hidden") + '><label for="f-ffact">Fecha de factura</label><input id="f-ffact" class="input" type="date" value="' + esc(f.fechaFactura || hoy()) + '"></div></div>' +
-        '<label class="check"><input type="checkbox" id="f-cobrado"' + (f.cobrado ? " checked" : "") + "> Ya la cobré</label>" +
-        '<div class="field" id="f-fc-wrap"' + (f.cobrado ? "" : " hidden") + '><label for="f-fcobro">Fecha de cobro</label><input id="f-fcobro" class="input" type="date" value="' + esc(f.fechaCobro || hoy()) + '"></div>' : "") +
+      "</div>" +
+      (ev ? '<div class="estado-row">' +
+        '<div class="estado-col" id="f-fact-block"' + (pideFactura(ev) ? "" : " hidden") + '>' +
+        '<label class="check"><input type="checkbox" id="f-facturada"' + (f.facturada ? " checked" : "") + "> Facturada</label></div>" +
+        '<div class="estado-col">' +
+        '<label class="check"><input type="checkbox" id="f-cobrado"' + (f.cobrado ? " checked" : "") + "> Cobrada</label>" +
+        '<input id="f-fcobro" class="input" type="date" aria-label="Fecha de cobro" value="' + esc(f.fechaCobro || hoy()) + '"' + (f.cobrado ? "" : " hidden") + "></div>" +
+        "</div>" : "") +
       '<div class="err" id="f-err"></div>' +
       '<div class="actions"><button class="btn" type="submit">Guardar</button>' +
       (ev ? '<button class="btn danger" type="button" data-action="delete" id="f-del">Eliminar</button>' : "") +
@@ -852,7 +865,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       var fb = document.getElementById("f-facturada");
       if (pideFactura(ev) && fb && fb.checked) {
         ev.facturada = true;
-        ev.fechaFactura = document.getElementById("f-ffact").value || hoy();
+        ev.fechaFactura = antes.facturada && antes.fechaFactura ? antes.fechaFactura : hoy();
       } else {
         ev.facturada = false; ev.fechaFactura = null;
       }
@@ -1096,10 +1109,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   });
   document.addEventListener("change", function (e) {
     if (e.target.id === "f-cobrado") {
-      document.getElementById("f-fc-wrap").hidden = !e.target.checked;
+      document.getElementById("f-fcobro").hidden = !e.target.checked;
       updatePreview();
-    } else if (e.target.id === "f-facturada") {
-      document.getElementById("f-ff-wrap").hidden = !e.target.checked;
     } else if (e.target.id === "f-prod" || e.target.id === "f-np-factura") {
       var sel = document.getElementById("f-prod").value;
       var nueva = sel === "__nueva";
