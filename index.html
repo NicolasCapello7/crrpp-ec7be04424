@@ -89,6 +89,25 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .chips.filtros { flex-wrap: nowrap; gap: 6px; }
 .chips.filtros .chip { flex: 1 1 0; min-width: 0; padding: 8px 2px; font-size: clamp(11px, 3.4vw, 14px); white-space: nowrap; text-align: center; letter-spacing: -.01em; }
 .chips.filtros .chip .c { margin-left: 3px; }
+.chips.filtros .chip { overflow: hidden; }
+.chip .l-sh { display: none; }
+.chips.corto .l-lg { display: none; }
+.chips.corto .l-sh { display: inline; }
+.filtros-row { display: flex; gap: 8px; align-items: center; }
+.filtros-row .chips.filtros { flex: 1 1 auto; min-width: 0; }
+.icon-btn { flex: 0 0 auto; position: relative; width: 40px; height: 36px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--fg); display: grid; place-items: center; padding: 0; }
+.icon-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.icon-btn[aria-expanded="true"] { background: var(--surface-2); }
+.icon-btn.activo { border-color: var(--accent); color: var(--accent); }
+.icon-btn.activo::after { content: ""; position: absolute; top: -2px; right: -2px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); }
+.filtro-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.chips.rangos .chip { font-size: 13px; padding: 6px 12px; }
+.filtro-resumen { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); margin-top: -6px; }
+.filtro-resumen b { color: var(--fg); font-weight: 600; }
+.link-btn { background: none; border: 0; padding: 4px 0; color: var(--accent); font-weight: 600; font-size: 13px; }
+.free-line { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.frees-row { align-items: stretch; }
+.frees-check { background: var(--surface-2); border-radius: 12px; padding: 0 12px; min-height: 48px; }
 
 /* Ticket cards */
 .list { display: flex; flex-direction: column; gap: 14px; }
@@ -296,8 +315,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 16;
-  var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false };
+  var VERSION = 17;
+  var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
+    filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false };
 
   var $main = document.getElementById("main");
   var $fab = document.getElementById("fab");
@@ -331,10 +351,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
-  function hoy() {
-    var d = new Date();
-    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-  }
+  function isoDe(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function hoy() { return isoDe(new Date()); }
   function partes(f) {
     var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(f || "");
     return m ? { y: +m[1], m: +m[2], d: +m[3] } : null;
@@ -357,6 +375,15 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   function pctDe(ev) { return ev.cobrado && typeof ev.pctCobrado === "number" ? ev.pctCobrado : pctPendiente(ev); }
   function esEspecial(ev) { return pctDe(ev) !== pctEf(); }
   function comision(ev) { return (Number(ev.facturado) || 0) * pctDe(ev) / 100; }
+  // Frees: each scanned free pays the productora's value in full (no %); the value is frozen once cobrado
+  function tieneFrees(ev) { return typeof ev.frees === "number"; }
+  function valorFree(ev) {
+    if (ev.cobrado && typeof ev.valorFreeCobrado === "number") return ev.valorFreeCobrado;
+    var p = prod(ev.productoraId);
+    return p && typeof p.valorFree === "number" ? p.valorFree : 0;
+  }
+  function montoFrees(ev) { return tieneFrees(ev) ? ev.frees * valorFree(ev) : 0; }
+  function totalEvento(ev) { return comision(ev) + montoFrees(ev); }
   function buscar(id) { return data.eventos.find(function (e) { return e.id === id; }); }
   function prod(id) { return id ? data.productoras.find(function (p) { return p.id === id; }) || null : null; }
   function prodPorNombre(n) {
@@ -379,11 +406,85 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     clearTimeout(toast.t);
     toast.t = setTimeout(function () { $toastRoot.innerHTML = ""; }, 2600);
   }
-  function ordenados() {
-    return data.eventos.slice().sort(function (a, b) {
+  function ordenados(lista) {
+    return (lista || data.eventos).slice().sort(function (a, b) {
       return (b.fecha || "").localeCompare(a.fecha || "") || (b.creado || "").localeCompare(a.creado || "");
     });
   }
+  // ---------- filters (date range and/or productora) ----------
+  function enRango(ev, f) { return (!f.desde || ev.fecha >= f.desde) && (!f.hasta || ev.fecha <= f.hasta); }
+  function filtroActivo(f) { return !!(f.desde || f.hasta || f.prod); }
+  function eventosFiltrados() {
+    var f = ui.filtroEv;
+    return data.eventos.filter(function (ev) {
+      if (!enRango(ev, f)) return false;
+      if (f.prod === "__sin") return !prod(ev.productoraId);
+      if (f.prod) return ev.productoraId === f.prod;
+      return true;
+    });
+  }
+  function eventosRendimiento() { return data.eventos.filter(function (ev) { return enRango(ev, ui.filtroRend); }); }
+  var RANGOS = [["mes", "Este mes"], ["mespasado", "Mes pasado"], ["3m", "Últimos 3 meses"], ["anio", "Este año"]];
+  function rango(tipo) {
+    var d = new Date(), y = d.getFullYear(), m = d.getMonth();
+    if (tipo === "mes") return [isoDe(new Date(y, m, 1)), isoDe(new Date(y, m + 1, 0))];
+    if (tipo === "mespasado") return [isoDe(new Date(y, m - 1, 1)), isoDe(new Date(y, m, 0))];
+    if (tipo === "3m") return [isoDe(new Date(y, m - 2, 1)), isoDe(new Date(y, m + 1, 0))];
+    if (tipo === "anio") return [isoDe(new Date(y, 0, 1)), isoDe(new Date(y, 11, 31))];
+    return ["", ""];
+  }
+  function textoFiltro(f) {
+    var partesTxt = [];
+    if (f.desde && f.hasta) partesTxt.push(fechaCorta(f.desde) + " al " + fechaCorta(f.hasta));
+    else if (f.desde) partesTxt.push("desde " + fechaCorta(f.desde));
+    else if (f.hasta) partesTxt.push("hasta " + fechaCorta(f.hasta));
+    if (f.prod === "__sin") partesTxt.push("Sin productora");
+    else if (f.prod) { var p = prod(f.prod); partesTxt.push(p ? p.nombre : "Productora eliminada"); }
+    return partesTxt.join(" · ");
+  }
+  var ICONO_FILTRO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M6.5 12h11M10 18h4"/></svg>';
+  function botonFiltro(scope) {
+    var f = scope === "ev" ? ui.filtroEv : ui.filtroRend;
+    var abierto = scope === "ev" ? ui.panelEv : ui.panelRend;
+    return '<button type="button" class="icon-btn' + (filtroActivo(f) ? " activo" : "") + '" data-panel="' + scope + '" aria-expanded="' + abierto + '" aria-label="Filtrar">' + ICONO_FILTRO + "</button>";
+  }
+  function panelFiltro(scope) {
+    var f = scope === "ev" ? ui.filtroEv : ui.filtroRend;
+    var h = '<div class="filtro-panel">' +
+      '<div class="chips rangos">' + RANGOS.map(function (r) {
+        var rr = rango(r[0]);
+        return '<button type="button" class="chip" data-rango="' + r[0] + '" data-scope="' + scope + '" aria-pressed="' + (f.desde === rr[0] && f.hasta === rr[1]) + '">' + r[1] + "</button>";
+      }).join("") + "</div>" +
+      '<div class="grid2">' +
+      '<div class="field"><label for="' + scope + '-desde">Desde</label><input id="' + scope + '-desde" class="input" type="date" value="' + esc(f.desde) + '"></div>' +
+      '<div class="field"><label for="' + scope + '-hasta">Hasta</label><input id="' + scope + '-hasta" class="input" type="date" value="' + esc(f.hasta) + '"></div></div>';
+    if (scope === "ev") {
+      h += '<div class="field"><label for="ev-prod">Productora</label><select id="ev-prod" class="input">' +
+        '<option value="">Todas las productoras</option>' +
+        data.productoras.slice().sort(function (a, b) { return a.nombre.localeCompare(b.nombre, "es"); }).map(function (p) {
+          return '<option value="' + esc(p.id) + '"' + (f.prod === p.id ? " selected" : "") + ">" + esc(p.nombre) + "</option>";
+        }).join("") +
+        '<option value="__sin"' + (f.prod === "__sin" ? " selected" : "") + ">Sin productora</option></select></div>";
+    }
+    h += '<div class="row"><button class="btn" type="button" data-action="filtro-cerrar" data-scope="' + scope + '">Listo</button>' +
+      '<button class="btn ghost" type="button" data-action="filtro-limpiar" data-scope="' + scope + '">Limpiar</button></div></div>';
+    return h;
+  }
+  function resumenFiltro(scope) {
+    var f = scope === "ev" ? ui.filtroEv : ui.filtroRend;
+    if (!filtroActivo(f)) return "";
+    return '<div class="filtro-resumen"><span>Filtrando: <b>' + esc(textoFiltro(f)) + '</b></span>' +
+      '<button type="button" class="link-btn" data-action="filtro-limpiar" data-scope="' + scope + '">Quitar</button></div>';
+  }
+  // Status chips switch to short labels when a count would not fit inside its pill
+  function ajustarChips() {
+    var box = document.querySelector(".chips.filtros");
+    if (!box) return;
+    box.classList.remove("corto");
+    var no = Array.prototype.some.call(box.querySelectorAll(".chip"), function (c) { return c.scrollWidth > c.clientWidth + 1; });
+    if (no) box.classList.add("corto");
+  }
+
   function copiaPendiente() { return data.eventos.length > 0 && diasDesde(data.ultimaCopia) > 30; }
   function diasDesde(iso) { return iso ? (Date.now() - new Date(iso).getTime()) / 864e5 : Infinity; }
 
@@ -413,12 +514,14 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var keep = prevPct && document.activeElement === prevPct ? prevPct.value : null;
     $main.innerHTML = '<div class="stack">' + html + "</div>";
     if (keep != null) { var np = document.getElementById("pct-input"); np.value = keep; np.focus(); }
+    ajustarChips();
   }
 
-  function totales() {
-    var t = { pend: 0, pendN: 0, cobr: 0, cobrN: 0, entradas: 0, facturado: 0, com: 0, sinFactN: 0, factN: 0 };
-    data.eventos.forEach(function (ev) {
-      var c = comision(ev);
+  function totales(lista) {
+    var t = { pend: 0, pendN: 0, cobr: 0, cobrN: 0, entradas: 0, facturado: 0, com: 0, sinFactN: 0, factN: 0, frees: 0, montoFrees: 0 };
+    (lista || data.eventos).forEach(function (ev) {
+      var c = totalEvento(ev);
+      if (tieneFrees(ev)) { t.frees += ev.frees; t.montoFrees += montoFrees(ev); }
       var st = estado(ev);
       t.entradas += Number(ev.entradas) || 0;
       t.facturado += Number(ev.facturado) || 0;
@@ -433,9 +536,11 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   }
 
   function viewFechas() {
-    var t = totales();
+    var evs = eventosFiltrados();
+    var filtrando = filtroActivo(ui.filtroEv);
+    var t = totales(evs);
     var h = '<section class="summary" aria-label="Resumen de cobros">' +
-      '<div><div class="eyebrow">Te deben</div>' +
+      '<div><div class="eyebrow">Te deben' + (filtrando ? " · filtrado" : "") + "</div>" +
       '<div class="big num">' + money.format(t.pend) + "</div>" +
       '<div class="sub">' + (t.pendN === 1 ? "1 evento por cobrar" : t.pendN + " eventos por cobrar") +
       (t.factN ? " (" + t.factN + (t.factN === 1 ? " facturado" : " facturados") + ")" : "") +
@@ -447,12 +552,15 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
     var conFact = hayFacturacion();
     if (!conFact && ui.filtro === "fact") ui.filtro = "todas";
-    h += '<div class="chips filtros" role="group" aria-label="Filtrar eventos">' +
-      chip("todas", "Todas", data.eventos.length) + chip("pend", "Pendientes", t.sinFactN) +
-      (conFact ? chip("fact", "Facturadas", t.factN) : "") + chip("cobr", "Cobradas", t.cobrN) + "</div>";
+    h += '<div class="filtros-row"><div class="chips filtros" role="group" aria-label="Filtrar eventos">' +
+      chip("todas", "Todas", "Todas", evs.length) + chip("pend", "Pendientes", "Pend", t.sinFactN) +
+      (conFact ? chip("fact", "Facturadas", "Fact", t.factN) : "") + chip("cobr", "Cobradas", "Cobr", t.cobrN) + "</div>" +
+      botonFiltro("ev") + "</div>";
+    if (ui.panelEv) h += panelFiltro("ev");
+    else h += resumenFiltro("ev");
 
     var FILTRO_ESTADO = { pend: "pendiente", fact: "facturada", cobr: "cobrada" };
-    var list = ordenados().filter(function (ev) {
+    var list = ordenados(evs).filter(function (ev) {
       return ui.filtro === "todas" || estado(ev) === FILTRO_ESTADO[ui.filtro];
     });
     var VACIO = { pend: "No tenés eventos pendientes.", fact: "No tenés eventos facturados esperando cobro.", cobr: "Todavía no marcaste eventos como cobrados." };
@@ -460,16 +568,16 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (!data.eventos.length) {
       h += '<div class="empty"><strong>Todavía no cargaste eventos</strong>Tocá <b>Nuevo evento</b>, poné el nombre, las entradas y el monto que ves en Bombo, y la app calcula tu comisión.</div>';
     } else if (!list.length) {
-      h += '<div class="empty">' + VACIO[ui.filtro] + "</div>";
+      h += '<div class="empty">' + (filtrando && !evs.length ? "No hay eventos con ese filtro." : VACIO[ui.filtro] || "No hay eventos con ese filtro.") + "</div>";
     } else {
       h += '<div class="list">' + list.map(card).join("") + "</div>";
     }
     return h;
   }
 
-  function chip(id, label, count) {
+  function chip(id, label, corto, count) {
     return '<button type="button" class="chip" data-filtro="' + id + '" aria-pressed="' + (ui.filtro === id) + '">' +
-      label + '<span class="c num">' + count + "</span></button>";
+      '<span class="l-lg">' + label + '</span><span class="l-sh">' + corto + '</span><span class="c num">' + count + "</span></button>";
   }
 
   function card(ev) {
@@ -498,10 +606,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       '<div class="meta num">' + intf.format(Number(ev.entradas) || 0) + " entradas · " + money.format(Number(ev.facturado) || 0) + " facturado</div></div>" +
       "</button>" +
       '<div class="tkt-stub">' +
-      '<div class="stub-amt"><div class="lbl-row"><span class="lbl">Tu comisión</span>' +
+      '<div class="stub-amt"><div class="lbl-row"><span class="lbl">' + (tieneFrees(ev) && ev.frees > 0 ? "A cobrar" : "Tu comisión") + "</span>" +
       '<button type="button" class="pct-chip' + (esEspecial(ev) ? " especial" : "") + '" data-pct="' + esc(ev.id) + '" aria-expanded="' + (ui.editPct === ev.id) + '" aria-label="Cambiar el porcentaje de este evento">' +
       pctf.format(pctDe(ev)) + '%<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5l3 3L5 14H2v-3z"/></svg></button></div>' +
-      '<div class="amt num" data-amt="' + esc(ev.id) + '">' + money.format(comision(ev)) + "</div>" +
+      '<div class="amt num" data-amt="' + esc(ev.id) + '">' + money.format(totalEvento(ev)) + "</div>" +
+      (tieneFrees(ev) && ev.frees > 0 ? '<div class="free-line num">' + money.format(comision(ev)) + " comisión + " + intf.format(ev.frees) +
+        (ev.frees === 1 ? " free " : " frees ") + (valorFree(ev) ? money.format(montoFrees(ev)) : "(sin valor por free)") + "</div>" : "") +
       pill + "</div>" + boton + "</div>" +
       (ui.editPct === ev.id ? pctEditor(ev) : "") +
       "</article>";
@@ -530,7 +640,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var raw = document.getElementById("pe-input").value.replace("%", "").trim();
     var v = raw ? parseNum(raw) : pctEf();
     var amt = document.querySelector('[data-amt="' + ev.id + '"]');
-    if (amt && !isNaN(v)) amt.textContent = money.format((Number(ev.facturado) || 0) * v / 100);
+    if (amt && !isNaN(v)) amt.textContent = money.format((Number(ev.facturado) || 0) * v / 100 + montoFrees(ev));
   }
 
   function guardarPctFecha() {
@@ -551,20 +661,24 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   }
 
   function viewRendimiento() {
-    var evs = data.eventos;
-    if (!evs.length) {
+    if (!data.eventos.length) {
       return '<div class="empty"><strong>Sin datos todavía</strong>Cuando cargues tus eventos vas a ver acá cuáles vendieron más, tu precio promedio por entrada y lo que ganaste por mes.</div>';
     }
-    var t = totales();
+    var evs = eventosRendimiento();
+    var h = '<div class="section-h"><h2>Rendimiento</h2>' + botonFiltro("rend") + "</div>";
+    h += ui.panelRend ? panelFiltro("rend") : resumenFiltro("rend");
+    if (!evs.length) return h + '<div class="empty">No hay eventos en ese período.</div>';
+    var t = totales(evs);
     var prom = t.entradas / evs.length;
     var ticket = t.entradas ? t.facturado / t.entradas : 0;
-    var h = '<div class="tiles">' +
+    h += '<div class="tiles">' +
       tile(intf.format(evs.length), "eventos trabajados") +
       tile(intf.format(t.entradas), "entradas vendidas") +
       tile(money.format(t.facturado), "facturado total") +
-      tile(money.format(t.com), "comisión total") +
+      tile(money.format(t.com), t.frees ? "ganado total (comisión + frees)" : "comisión total") +
       tile(intf.format(Math.round(prom)), "entradas por evento (promedio)") +
       tile(money.format(ticket), "precio promedio por entrada") +
+      (t.frees ? tile(intf.format(t.frees), "frees escaneados") + tile(money.format(t.montoFrees), "cobrado por frees") : "") +
       "</div>";
 
     var key = ui.rankBy;
@@ -586,7 +700,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     evs.forEach(function (ev) {
       var k = (ev.fecha || "").slice(0, 7);
       if (!meses[k]) meses[k] = { n: 0, ent: 0, com: 0, pend: 0 };
-      var c = comision(ev);
+      var c = totalEvento(ev);
       meses[k].n++; meses[k].ent += Number(ev.entradas) || 0; meses[k].com += c;
       if (!ev.cobrado) meses[k].pend += c;
     });
@@ -595,14 +709,14 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       var pr = prod(ev.productoraId);
       var k = pr ? pr.id : "";
       if (!porProd[k]) porProd[k] = { nombre: pr ? pr.nombre : "Sin productora", n: 0, ent: 0, com: 0, pend: 0 };
-      var c = comision(ev);
+      var c = totalEvento(ev);
       porProd[k].n++; porProd[k].ent += Number(ev.entradas) || 0; porProd[k].com += c;
       if (!ev.cobrado) porProd[k].pend += c;
     });
     var filasProd = Object.keys(porProd).map(function (k) { return porProd[k]; }).sort(function (a, b) { return b.com - a.com; });
     if (filasProd.length > 1 || (filasProd[0] && filasProd[0].nombre !== "Sin productora")) {
       h += '<div class="section-h"><h2>Por productora</h2></div>';
-      h += '<div class="table-wrap"><table><thead><tr><th>Productora</th><th>Eventos</th><th>Entradas</th><th>Comisión</th><th>Por cobrar</th></tr></thead><tbody>' +
+      h += '<div class="table-wrap"><table><thead><tr><th>Productora</th><th>Eventos</th><th>Entradas</th><th>Ganado</th><th>Por cobrar</th></tr></thead><tbody>' +
         filasProd.map(function (r) {
           return "<tr><td>" + esc(r.nombre) + '</td><td class="num">' + r.n + '</td><td class="num">' + intf.format(r.ent) +
             '</td><td class="num">' + money.format(r.com) + '</td><td class="num' + (r.pend > 0 ? " pend" : "") + '">' + money.format(r.pend) + "</td></tr>";
@@ -611,7 +725,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
     var keys = Object.keys(meses).sort().reverse();
     h += '<div class="section-h"><h2>Por mes</h2></div>';
-    h += '<div class="table-wrap"><table><thead><tr><th>Mes</th><th>Eventos</th><th>Entradas</th><th>Comisión</th><th>Pendiente</th></tr></thead><tbody>' +
+    h += '<div class="table-wrap"><table><thead><tr><th>Mes</th><th>Eventos</th><th>Entradas</th><th>Ganado</th><th>Pendiente</th></tr></thead><tbody>' +
       keys.map(function (k) {
         var m = meses[k], p = partes(k + "-01");
         var label = p ? MESES_LARGO[p.m - 1] + " " + p.y : "Sin fecha";
@@ -680,6 +794,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       if (ui.editProd === p.id) {
         return '<li class="prod-row editing"><form id="prod-form" data-id="' + esc(p.id) + '" class="prod-edit" novalidate>' +
           '<div class="field"><label for="pe-nombre">Nombre</label><input id="pe-nombre" class="input" type="text" autocomplete="off" value="' + esc(p.nombre) + '"></div>' +
+          '<div class="field"><label for="pe-free">Valor por free escaneado</label><div class="money"><span>$</span><input id="pe-free" class="input miles num" type="text" inputmode="numeric" autocomplete="off" placeholder="0" value="' + (typeof p.valorFree === "number" ? intf.format(p.valorFree) : "") + '"></div></div>' +
           '<label class="check"><input type="checkbox" id="pe-factura"' + (p.factura ? " checked" : "") + "> Pide factura para pagar</label>" +
           '<div class="err" id="prod-err"></div>' +
           '<div class="row"><button class="btn" type="submit">Guardar</button>' +
@@ -690,15 +805,25 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       }
       return '<li class="prod-row"><div class="prod-info"><span class="prod-nom">' + esc(p.nombre) + "</span>" +
         '<span class="hint">' + (n === 1 ? "1 evento" : n + " eventos") + "</span>" +
+        (typeof p.valorFree === "number" ? '<span class="hint">Free ' + money.format(p.valorFree) + "</span>" : "") +
         (p.factura ? '<span class="pill fact">Pide factura</span>' : "") + "</div>" +
         '<button type="button" class="btn ghost sm" data-prod-edit="' + esc(p.id) + '">Editar</button></li>';
     }).join("") + "</ul>";
     h += '<form id="prod-add-form" class="prod-add" novalidate>' +
       '<div class="field"><label for="pa-nombre">Agregar productora</label><input id="pa-nombre" class="input" type="text" autocomplete="off" placeholder="Nombre"></div>' +
+      '<div class="field"><label for="pa-free">Valor por free escaneado</label><div class="money"><span>$</span><input id="pa-free" class="input miles num" type="text" inputmode="numeric" autocomplete="off" placeholder="0"></div></div>' +
       '<label class="check"><input type="checkbox" id="pa-factura"> Pide factura para pagar</label>' +
       '<div class="err" id="pa-err"></div>' +
       '<div class="row"><button class="btn" type="submit">Agregar</button></div></form></section>';
     return h;
+  }
+
+  // null = not set, NaN = invalid
+  function leerValorFree(id) {
+    var raw = ((document.getElementById(id) || {}).value || "").trim();
+    if (!raw) return null;
+    var v = parseNum(raw);
+    return isNaN(v) || v < 0 ? NaN : v;
   }
 
   function agregarProductora() {
@@ -706,7 +831,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var nombre = input.value.trim();
     if (!nombre) { err.textContent = "Poné el nombre de la productora."; return; }
     if (prodPorNombre(nombre)) { err.textContent = "Ya tenés una productora con ese nombre."; return; }
-    var p = { id: nuevoId(), nombre: nombre, factura: document.getElementById("pa-factura").checked };
+    var vf = leerValorFree("pa-free");
+    if (isNaN(vf)) { err.textContent = "Revisá el valor del free: solo números, por ejemplo 5.000"; return; }
+    var p = { id: nuevoId(), nombre: nombre, factura: document.getElementById("pa-factura").checked, valorFree: vf };
     data.productoras.push(p);
     if (!persist()) { data.productoras.pop(); return; }
     input.blur();
@@ -723,9 +850,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (!nombre) { err.textContent = "Poné el nombre de la productora."; return; }
     var otra = prodPorNombre(nombre);
     if (otra && otra.id !== p.id) { err.textContent = "Ya tenés otra productora con ese nombre."; return; }
+    var vf = leerValorFree("pe-free");
+    if (isNaN(vf)) { err.textContent = "Revisá el valor del free: solo números, por ejemplo 5.000"; return; }
     var antes = Object.assign({}, p);
     p.nombre = nombre;
     p.factura = document.getElementById("pe-factura").checked;
+    p.valorFree = vf;
     if (!persist()) { Object.assign(p, antes); return; }
     ui.editProd = null; ui.prodBorrar = false;
     render();
@@ -778,6 +908,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       "</div>" +
       '<div class="nueva-prod" id="f-np-wrap" hidden>' +
       '<div class="field"><label for="f-np-nombre">Nombre de la productora</label><input id="f-np-nombre" class="input" type="text" autocomplete="off" placeholder="Ej: Mandarine"></div>' +
+      '<div class="field"><label for="f-np-free">Valor por free escaneado</label><div class="money"><span>$</span><input id="f-np-free" class="input miles num" type="text" inputmode="numeric" autocomplete="off" placeholder="0"></div></div>' +
       '<label class="check"><input type="checkbox" id="f-np-factura"> Pide factura para pagar</label></div>' +
       '<div class="grid2">' +
       '<div class="field"><label for="f-entradas">Entradas vendidas</label><input id="f-entradas" class="input miles num" type="text" inputmode="numeric" autocomplete="off" placeholder="0" value="' + esc(f.entradas === "" ? "" : intf.format(f.entradas)) + '"></div>' +
@@ -786,8 +917,13 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       '<div class="grid2">' +
       '<div class="field"><label for="f-pctev">Comisión</label>' +
       '<div class="pct-wrap full"><input id="f-pctev" class="input num" type="text" inputmode="decimal" autocomplete="off" placeholder="' + esc(pctf.format(pctEf())) + '" value="' + esc(pctTxt) + '"><span>%</span></div></div>' +
-      '<div class="preview"><span class="sub">Tu comisión<span id="f-pct"></span></span><span class="amt num" id="f-com">$ 0</span></div>' +
+      '<div class="preview"><span class="sub" id="f-com-lbl">Tu comisión<span id="f-pct"></span></span><span class="amt num" id="f-com">$ 0</span></div>' +
       "</div>" +
+      '<div class="grid2 frees-row">' +
+      '<label class="check frees-check"><input type="checkbox" id="f-frees-on"' + (tieneFrees(f) ? " checked" : "") + "> Frees</label>" +
+      '<input id="f-frees" class="input miles num" type="text" inputmode="numeric" autocomplete="off" aria-label="Frees escaneados" placeholder="Escaneados" value="' +
+      (tieneFrees(f) && f.frees ? intf.format(f.frees) : "") + '"' + (tieneFrees(f) ? "" : " hidden") + "></div>" +
+      '<div class="hint" id="f-frees-info"' + (tieneFrees(f) ? "" : " hidden") + "></div>" +
       (ev ? '<div class="estado-row">' +
         '<div class="estado-col" id="f-fact-block"' + (pideFactura(ev) ? "" : " hidden") + '>' +
         '<label class="check"><input type="checkbox" id="f-facturada"' + (f.facturada ? " checked" : "") + "> Facturada</label></div>" +
@@ -818,13 +954,42 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   function closeSheet() { $sheetRoot.innerHTML = ""; sheet.id = null; curarLuego(); }
   function curarLuego() { setTimeout(curarViewport, 300); setTimeout(curarViewport, 800); }
 
+  // Value per free for the productora currently chosen in the form
+  function valorFreeForm() {
+    var sel = (document.getElementById("f-prod") || {}).value;
+    var ev = sheet.id ? buscar(sheet.id) : null;
+    if (ev && ev.cobrado && sel === ev.productoraId && typeof ev.valorFreeCobrado === "number") return ev.valorFreeCobrado;
+    if (sel === "__nueva") { var nv = leerValorFree("f-np-free"); return nv == null || isNaN(nv) ? 0 : nv; }
+    var p = prod(sel);
+    return p && typeof p.valorFree === "number" ? p.valorFree : 0;
+  }
+  function leerFreesForm() {
+    var on = document.getElementById("f-frees-on");
+    if (!on || !on.checked) return null;
+    var raw = document.getElementById("f-frees").value.trim();
+    return raw ? parseNum(raw) : 0;
+  }
+
   function updatePreview() {
     var fac = parseNum((document.getElementById("f-facturado") || {}).value);
     var v = leerPctFecha();
     var p = v == null || isNaN(v) ? pctEf() : v;
-    var com = document.getElementById("f-com"), lp = document.getElementById("f-pct");
-    if (com) com.textContent = money.format(isNaN(fac) ? 0 : fac * p / 100);
-    if (lp) lp.textContent = " (" + pctf.format(p) + "%)";
+    var comi = isNaN(fac) ? 0 : fac * p / 100;
+    var n = leerFreesForm();
+    var valor = valorFreeForm();
+    var extra = n && !isNaN(n) ? n * valor : 0;
+    var com = document.getElementById("f-com"), lp = document.getElementById("f-pct"), lbl = document.getElementById("f-com-lbl");
+    if (com) com.textContent = money.format(comi + extra);
+    if (lbl) lbl.firstChild.nodeValue = extra ? "Comisión + frees" : "Tu comisión";
+    if (lp) lp.textContent = extra ? "" : " (" + pctf.format(p) + "%)";
+    var info = document.getElementById("f-frees-info");
+    if (info) {
+      info.hidden = n === null;
+      if (n !== null) {
+        info.textContent = !valor ? "Esta productora no tiene valor por free. Cargalo en Ajustes → Mis productoras."
+          : intf.format(n || 0) + " × " + money.format(valor) + " = " + money.format(extra) + " (sin %, se cobra completo)";
+      }
+    }
   }
 
   function saveSheet() {
@@ -839,6 +1004,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (isNaN(facturado) || facturado < 0) { err.textContent = "Revisá el monto facturado: solo números, por ejemplo 1.250.000"; return; }
     var pctFecha = leerPctFecha();
     if (pctFecha !== null && isNaN(pctFecha)) { err.textContent = "La comisión tiene que ser un porcentaje entre 0 y 100, por ejemplo 10 o 12,5."; return; }
+    var frees = leerFreesForm();
+    if (frees !== null && (isNaN(frees) || frees < 0 || Math.floor(frees) !== frees)) { err.textContent = "Los frees tienen que ser un número entero."; return; }
     var cambioPct = pctFecha !== sheet.pctInicial;
     // A % equal to the general one (or empty) means "follow the general %"
     var propio = pctFecha === null || pctFecha === pctEf() ? null : pctFecha;
@@ -852,7 +1019,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       var existente = prodPorNombre(npNombre);
       if (existente) prodSel = existente.id;
       else {
-        prodNueva = { id: nuevoId(), nombre: npNombre, factura: document.getElementById("f-np-factura").checked };
+        var npFree = leerValorFree("f-np-free");
+        if (isNaN(npFree)) { err.textContent = "Revisá el valor del free: solo números, por ejemplo 5.000"; return; }
+        prodNueva = { id: nuevoId(), nombre: npNombre, factura: document.getElementById("f-np-factura").checked, valorFree: npFree };
         prodSel = prodNueva.id;
       }
     }
@@ -864,6 +1033,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (ev) {
       ev.nombre = nombre; ev.fecha = fecha; ev.entradas = entradas; ev.facturado = facturado;
       ev.productoraId = productoraId;
+      ev.frees = frees;
       var fb = document.getElementById("f-facturada");
       if (pideFactura(ev) && fb && fb.checked) {
         ev.facturada = true;
@@ -876,14 +1046,18 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       if (cb && cb.checked) {
         if (cambioPct) ev.pctCobrado = pctFecha === null ? pctEf() : pctFecha;
         else if (!(antes.cobrado && typeof antes.pctCobrado === "number")) ev.pctCobrado = pctPendiente(ev);
+        if (!(antes.cobrado && typeof antes.valorFreeCobrado === "number" && antes.productoraId === ev.productoraId)) {
+          var pf = prod(ev.productoraId);
+          ev.valorFreeCobrado = pf && typeof pf.valorFree === "number" ? pf.valorFree : 0;
+        }
         ev.cobrado = true;
         ev.fechaCobro = document.getElementById("f-fcobro").value || hoy();
       } else {
-        ev.cobrado = false; ev.fechaCobro = null; ev.pctCobrado = null;
+        ev.cobrado = false; ev.fechaCobro = null; ev.pctCobrado = null; ev.valorFreeCobrado = null;
       }
     } else {
       data.eventos.push({ id: nuevoId(), nombre: nombre, fecha: fecha, entradas: entradas, facturado: facturado,
-        productoraId: productoraId, facturada: false, fechaFactura: null,
+        productoraId: productoraId, facturada: false, fechaFactura: null, frees: frees, valorFreeCobrado: null,
         pctPropio: propio, cobrado: false, fechaCobro: null, pctCobrado: null, creado: new Date().toISOString() });
     }
     if (!persist()) {
@@ -921,8 +1095,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var ev = buscar(id);
     if (!ev) return;
     var antes = Object.assign({}, ev);
-    if (ev.cobrado) { ev.cobrado = false; ev.fechaCobro = null; ev.pctCobrado = null; }
-    else { ev.cobrado = true; ev.fechaCobro = hoy(); ev.pctCobrado = pctPendiente(ev); }
+    if (ev.cobrado) { ev.cobrado = false; ev.fechaCobro = null; ev.pctCobrado = null; ev.valorFreeCobrado = null; }
+    else {
+      var pf = prod(ev.productoraId);
+      ev.valorFreeCobrado = pf && typeof pf.valorFree === "number" ? pf.valorFree : 0;
+      ev.cobrado = true; ev.fechaCobro = hoy(); ev.pctCobrado = pctPendiente(ev);
+    }
     if (!persist()) { Object.assign(ev, antes); return; }
     render();
     toast(ev.cobrado ? "Evento cobrado" : estado(ev) === "facturada" ? "Volvió a Facturada" : "Volvió a Pendiente");
@@ -987,10 +1165,11 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     function n(x) { return String(Math.round(x * 100) / 100).replace(".", ","); }
     function q(s) { s = String(s == null ? "" : s); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
     var ESTADOS = { pendiente: "Pendiente", facturada: "Facturada", cobrada: "Cobrada" };
-    var filas = [["Evento", "Fecha", "Productora", "Entradas", "Facturado", "% comisión", "Comisión", "Estado", "Fecha de cobro"].join(";")];
+    var filas = [["Evento", "Fecha", "Productora", "Entradas", "Facturado", "% comisión", "Comisión", "Frees", "Valor free", "Monto frees", "Total a cobrar", "Estado", "Fecha de cobro"].join(";")];
     ordenados().forEach(function (ev) {
       var pr = prod(ev.productoraId);
       filas.push([q(ev.nombre), fechaCorta(ev.fecha), q(pr ? pr.nombre : ""), ev.entradas || 0, n(Number(ev.facturado) || 0), n(pctDe(ev)), n(comision(ev)),
+        tieneFrees(ev) ? ev.frees : "", tieneFrees(ev) ? n(valorFree(ev)) : "", tieneFrees(ev) ? n(montoFrees(ev)) : "", n(totalEvento(ev)),
         ESTADOS[estado(ev)], ev.cobrado ? fechaCorta(ev.fechaCobro) : ""].join(";"));
     });
     entregarArchivo("﻿" + filas.join("\r\n"), "comisiones-rrpp-" + hoy() + ".csv", "text/csv").then(function (ok) {
@@ -1011,10 +1190,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
             pctPropio: typeof e.pctPropio === "number" ? e.pctPropio : null,
             productoraId: e.productoraId ? String(e.productoraId) : null,
             facturada: !!e.facturada, fechaFactura: e.facturada ? (e.fechaFactura || null) : null,
+            frees: typeof e.frees === "number" ? e.frees : null,
+            valorFreeCobrado: e.cobrado && typeof e.valorFreeCobrado === "number" ? e.valorFreeCobrado : null,
             pctCobrado: e.cobrado && typeof e.pctCobrado === "number" ? e.pctCobrado : null, creado: e.creado || new Date().toISOString() };
         });
         var productoras = Array.isArray(d.productoras) ? d.productoras.filter(function (p) { return p && p.id && typeof p.nombre === "string"; })
-          .map(function (p) { return { id: String(p.id), nombre: p.nombre, factura: !!p.factura }; }) : null;
+          .map(function (p) { return { id: String(p.id), nombre: p.nombre, factura: !!p.factura, valorFree: typeof p.valorFree === "number" ? p.valorFree : null }; }) : null;
         ui.pendingImport = { eventos: eventos, productoras: productoras, pct: typeof d.pct === "number" ? d.pct : null, exportado: d.exportado || null };
         render();
       } catch (e) {
@@ -1040,9 +1221,21 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   // ---------- events ----------
   document.addEventListener("click", function (e) {
-    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-pct],[data-pe],[data-toggle],[data-facturar],[data-prod-edit],[data-action]");
+    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-pct],[data-pe],[data-toggle],[data-facturar],[data-prod-edit],[data-panel],[data-rango],[data-action]");
     if (!t) return;
     if (t.hasAttribute("data-facturar")) { marcarFacturada(t.getAttribute("data-facturar")); return; }
+    if (t.hasAttribute("data-panel")) {
+      if (t.getAttribute("data-panel") === "ev") ui.panelEv = !ui.panelEv; else ui.panelRend = !ui.panelRend;
+      render();
+      return;
+    }
+    if (t.hasAttribute("data-rango")) {
+      var rr = rango(t.getAttribute("data-rango"));
+      var fr = t.getAttribute("data-scope") === "ev" ? ui.filtroEv : ui.filtroRend;
+      fr.desde = rr[0]; fr.hasta = rr[1];
+      render();
+      return;
+    }
     if (t.hasAttribute("data-prod-edit")) {
       ui.editProd = t.getAttribute("data-prod-edit"); ui.prodBorrar = false; render();
       var pn = document.getElementById("pe-nombre"); if (pn) pn.closest(".prod-row").scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -1082,6 +1275,15 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     else if (a === "pct-cancel") { ui.editPct = null; render(); curarLuego(); }
     else if (a === "prod-cancel") { ui.editProd = null; ui.prodBorrar = false; render(); curarLuego(); }
     else if (a === "prod-delete") borrarProductora();
+    else if (a === "filtro-limpiar") {
+      if (t.getAttribute("data-scope") === "ev") ui.filtroEv = { desde: "", hasta: "", prod: "" };
+      else ui.filtroRend = { desde: "", hasta: "" };
+      render();
+    }
+    else if (a === "filtro-cerrar") {
+      if (t.getAttribute("data-scope") === "ev") ui.panelEv = false; else ui.panelRend = false;
+      render(); curarLuego();
+    }
   });
   document.addEventListener("submit", function (e) {
     e.preventDefault();
@@ -1106,11 +1308,24 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   document.addEventListener("input", function (e) {
     if (e.target.classList && e.target.classList.contains("miles")) maskMiles(e.target);
-    if (e.target.id === "f-facturado" || e.target.id === "f-pctev") updatePreview();
+    if (e.target.id === "f-facturado" || e.target.id === "f-pctev" || e.target.id === "f-frees" || e.target.id === "f-np-free") updatePreview();
     if (e.target.id === "pe-input") previewPct();
   });
   document.addEventListener("change", function (e) {
-    if (e.target.id === "f-cobrado") {
+    if (e.target.id === "f-frees-on") {
+      var fi = document.getElementById("f-frees");
+      fi.hidden = !e.target.checked;
+      if (e.target.checked) fi.focus();
+      updatePreview();
+    } else if (e.target.id === "ev-desde" || e.target.id === "ev-hasta" || e.target.id === "rend-desde" || e.target.id === "rend-hasta") {
+      var partesId = e.target.id.split("-");
+      var obj = partesId[0] === "ev" ? ui.filtroEv : ui.filtroRend;
+      obj[partesId[1]] = e.target.value || "";
+      render();
+    } else if (e.target.id === "ev-prod") {
+      ui.filtroEv.prod = e.target.value;
+      render();
+    } else if (e.target.id === "f-cobrado") {
       document.getElementById("f-fcobro").hidden = !e.target.checked;
       updatePreview();
     } else if (e.target.id === "f-prod" || e.target.id === "f-np-factura") {
@@ -1118,6 +1333,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       var nueva = sel === "__nueva";
       document.getElementById("f-np-wrap").hidden = !nueva;
       if (nueva && e.target.id === "f-prod") document.getElementById("f-np-nombre").focus();
+      updatePreview();
       var block = document.getElementById("f-fact-block");
       if (block) {
         var p = prod(sel);
@@ -1131,6 +1347,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && $sheetRoot.innerHTML) closeSheet();
   });
+
+  window.addEventListener("resize", ajustarChips);
 
   // ---------- iOS home-screen viewport heal ----------
   // In standalone mode iOS shrinks the viewport the first time the keyboard opens and never grows it

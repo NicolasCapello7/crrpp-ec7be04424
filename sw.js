@@ -1,6 +1,6 @@
 // Offline support: the app shell is cached; same-origin requests go network-first so updates arrive,
 // Google Fonts are cache-first.
-var CACHE = "comisiones-v16";
+var CACHE = "comisiones-v17";
 var SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", function (e) {
