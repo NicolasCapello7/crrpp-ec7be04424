@@ -122,7 +122,9 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .precio .tipo small { display: block; font-weight: 500; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .precio .valor { font-weight: 700; white-space: nowrap; }
 .precio.agotado .valor { color: var(--danger); font-size: 13px; }
-.cartel-acc { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 12px 12px; }
+.cartel-acc { display: flex; gap: 8px; padding: 0 12px 12px; align-items: center; }
+.cartel-acc .btn.sm { flex: 1 1 0; min-width: 0; white-space: nowrap; padding: 8px 6px; font-size: 13.5px; }
+.cartel-acc .icon-btn.sq { width: 38px; height: 38px; border-radius: 10px; background: var(--surface-2); border: 0; }
 .cartel-acc .borrar { color: var(--danger); }
 .link-row { display: flex; gap: 8px; }
 .link-row .input { flex: 1; min-width: 0; }
@@ -343,7 +345,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 19;
+  var VERSION = 20;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null };
 
@@ -894,12 +896,16 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       (!c.general && !c.vip ? '<div class="hint">Sin precios cargados</div>' : "") + "</div></div></div>" +
       '<div class="cartel-acc">' +
       (c.link ? '<button type="button" class="btn ghost sm" data-cartel-copiar="' + id + '">Copiar link</button>' : "") +
-      (c.link && LECTOR_URL ? '<button type="button" class="btn ghost sm" data-cartel-actualizar="' + id + '">Actualizar</button>' : "") +
-      '<button type="button" class="btn ghost sm" data-cartel-venta="' + id + '">Pasar a Mis Eventos</button>' +
-      '<button type="button" class="btn ghost sm borrar" data-cartel-borrar="' + id + '">' + (ui.cartelBorrar === c.id ? "¿Eliminar?" : "Eliminar") + "</button>" +
+      '<button type="button" class="btn ghost sm" data-cartel-venta="' + id + '">A Mis Eventos</button>' +
+      (c.link && LECTOR_URL ? '<button type="button" class="icon-btn sq" data-cartel-actualizar="' + id + '" aria-label="Actualizar precios">' + ICONO_ACTUALIZAR + "</button>" : "") +
+      (ui.cartelBorrar === c.id
+        ? '<button type="button" class="btn ghost sm borrar" data-cartel-borrar="' + id + '">¿Eliminar?</button>'
+        : '<button type="button" class="icon-btn sq borrar" data-cartel-borrar="' + id + '" aria-label="Eliminar evento">' + ICONO_BORRAR + "</button>") +
       "</div></article>";
   }
 
+  var ICONO_ACTUALIZAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>';
+  var ICONO_BORRAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13M10 11v6M14 11v6"/></svg>';
   var cartelSheet = { fase: "link", datos: null };
   function abrirCartel() {
     cartelSheet = { fase: "link", datos: null };
