@@ -358,6 +358,12 @@ export default {
           const cuerpo = await req.json().catch(() => ({}));
           const lista = limpiarEventos(cuerpo.eventos);
           if (!lista) return json(env, { ok: false, error: "datos" }, 400);
+          // a device that doesn't know a productora sends its name empty: keep the name already stored
+          const previos = new Map((await leerLista(env, u.sub)).map(c => [c.id, c]));
+          lista.forEach(c => {
+            const p = previos.get(c.id);
+            if (!c.productoraNombre && c.productoraId && p && p.productoraId === c.productoraId && p.productoraNombre) c.productoraNombre = p.productoraNombre;
+          });
           await guardarLista(env, u.sub, lista);
           return json(env, { ok: true, cantidad: lista.length });
         }
