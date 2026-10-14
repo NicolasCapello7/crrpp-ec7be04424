@@ -106,6 +106,28 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .filtro-resumen b { color: var(--fg); font-weight: 600; }
 .link-btn { background: none; border: 0; padding: 4px 0; color: var(--accent); font-weight: 600; font-size: 13px; }
 .free-line { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.nav button { font-size: 11.5px; }
+.cartel-list { display: flex; flex-direction: column; gap: 14px; }
+.cartel-list.pasados .cartel { opacity: .6; }
+.cartel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.cartel-top { display: flex; gap: 14px; padding: 12px; }
+.cartel-flyer { flex: 0 0 auto; width: 112px; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 10px; background: var(--surface-2); max-width: 100%; }
+.cartel-flyer.vacio { display: grid; place-items: center; font-size: 12px; color: var(--muted); }
+.cartel-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.cartel-fecha { font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--accent); }
+.cartel-info h3 { margin: 0; font-size: 16px; line-height: 1.25; overflow-wrap: anywhere; }
+.precios { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.precio { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.precio .tipo { font-weight: 600; min-width: 0; }
+.precio .tipo small { display: block; font-weight: 500; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.precio .valor { font-weight: 700; white-space: nowrap; }
+.precio.agotado .valor { color: var(--danger); font-size: 13px; }
+.cartel-acc { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 12px 12px; }
+.cartel-acc .borrar { color: var(--danger); }
+.link-row { display: flex; gap: 8px; }
+.link-row .input { flex: 1; min-width: 0; }
+.c-estado { font-size: 14px; color: var(--muted); }
+.preview-cartel .cartel-flyer { width: 96px; }
 .frees-row { align-items: stretch; }
 .frees-check { background: var(--surface-2); border-radius: 12px; padding: 0 12px; min-height: 48px; }
 
@@ -230,7 +252,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
 /* Bottom bar + FAB */
 .nav { flex: 0 0 auto; position: relative; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: max(4px, calc(env(safe-area-inset-bottom, 0px) - 16px)); z-index: 10; }
-.nav-inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); }
+.nav-inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
 .nav button { background: none; border: 0; padding: 12px 4px 10px; font-size: 12px; font-weight: 600; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .nav button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .nav button[aria-current="page"] { color: var(--accent); }
@@ -280,6 +302,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   <div class="nav-inner">
     <button type="button" data-view="fechas" aria-current="page">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/><path d="M14 5v12" stroke-dasharray="2 2"/></svg>
+      Mis Eventos
+    </button>
+    <button type="button" data-view="cartelera">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
       Eventos
     </button>
     <button type="button" data-view="rendimiento">
@@ -309,15 +335,17 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var pctf = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
 
   // Persisted data: { pct: number|null, eventos: [...], productoras: [{id, nombre, factura}], ultimaCopia: ISO|null }
-  var data = { pct: null, eventos: [], productoras: [], ultimaCopia: null };
+  var data = { pct: null, eventos: [], productoras: [], cartelera: [], ultimaCopia: null };
+  // Lector de Bombo (Cloudflare Worker, see /lector). Empty until it is deployed.
+  var LECTOR_URL = "";
   var PRODUCTORAS_INICIALES = [
     { id: "p-mandarine", nombre: "Mandarine", factura: true },
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 18;
+  var VERSION = 19;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
-    filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false };
+    filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null };
 
   var $main = document.getElementById("main");
   var $fab = document.getElementById("fab");
@@ -333,6 +361,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         data.pct = typeof d.pct === "number" ? d.pct : null;
         data.eventos = Array.isArray(d.eventos) ? d.eventos : [];
         data.productoras = Array.isArray(d.productoras) ? d.productoras : PRODUCTORAS_INICIALES.map(function (p) { return Object.assign({}, p); });
+        data.cartelera = Array.isArray(d.cartelera) ? d.cartelera : [];
         data.ultimaCopia = d.ultimaCopia || null;
       } else {
         data.productoras = PRODUCTORAS_INICIALES.map(function (p) { return Object.assign({}, p); });
@@ -491,6 +520,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // ---------- render ----------
   function render() {
     $fab.hidden = ui.view === "ajustes";
+    var enCartel = ui.view === "cartelera";
+    $fab.setAttribute("data-action", enCartel ? "cartel-nuevo" : "new");
+    $fab.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>' +
+      (enCartel ? "Agregar evento" : "Nuevo evento");
     document.querySelectorAll(".nav [data-view]").forEach(function (b) {
       if (b.getAttribute("data-view") === ui.view) b.setAttribute("aria-current", "page");
       else b.removeAttribute("aria-current");
@@ -507,6 +540,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (tabAjustes) tabAjustes.classList.toggle("aviso", copiaPendiente());
 
     if (ui.view === "fechas") html += viewFechas();
+    else if (ui.view === "cartelera") html += viewCartelera();
     else if (ui.view === "rendimiento") html += viewRendimiento();
     else html += viewAjustes();
 
@@ -781,6 +815,223 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     return h;
   }
 
+  // ---------- Eventos: cards built from a Bombo link ----------
+  var DIAS = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
+  function fechaLarga(fecha, hora) {
+    var p = partes(fecha);
+    if (!p) return "";
+    var dia = DIAS[new Date(p.y, p.m - 1, p.d).getDay()];
+    return dia + " " + p.d + " " + MESES[p.m - 1] + (hora ? " · " + hora : "");
+  }
+  // Current price = cheapest ticket still on sale; if all are sold out, the last tier, marked agotado
+  function elegirPrecios(ofertas) {
+    function actual(lista) {
+      if (!lista.length) return null;
+      var disp = lista.filter(function (o) { return o.disponible; });
+      var o = disp.length
+        ? disp.reduce(function (a, b) { return b.precio < a.precio ? b : a; })
+        : lista.reduce(function (a, b) { return b.precio > a.precio ? b : a; });
+      return { nombre: o.nombre, precio: o.precio, agotado: !disp.length };
+    }
+    var vip = ofertas.filter(function (o) { return /vip/i.test(o.nombre); });
+    var gen = ofertas.filter(function (o) { return !/vip/i.test(o.nombre); });
+    return { general: actual(gen), vip: actual(vip) };
+  }
+  function datosDeLector(j, link) {
+    var precios = elegirPrecios(j.ofertas || []);
+    return {
+      link: link, url: j.url || link, nombre: j.nombre || "", fecha: String(j.inicio || "").slice(0, 10), hora: String(j.inicio || "").slice(11, 16),
+      flyer: j.flyer || "", lugar: j.lugar || "", general: precios.general, vip: precios.vip, actualizado: new Date().toISOString()
+    };
+  }
+  function consultarLector(link) {
+    if (!LECTOR_URL) return Promise.reject({ code: "sin-lector" });
+    return fetch(LECTOR_URL + "?url=" + encodeURIComponent(link)).then(function (r) {
+      return r.json().catch(function () { return { ok: false, error: "red" }; });
+    }).then(function (j) {
+      if (!j || !j.ok) throw { code: (j && j.error) || "red" };
+      return j;
+    }, function (e) { throw e && e.code ? e : { code: "red" }; });
+  }
+  var ERRORES_LECTOR = {
+    "sin-lector": "La lectura automática todavía no está activada. Cargalo a mano por ahora.",
+    "link": "Ese link no es de Bombo. Copialo desde la app o la web de Bombo.",
+    "evento": "No encontré los datos del evento en ese link.",
+    "bombo": "Bombo no respondió. Probá de nuevo en un rato.",
+    "red": "No hay conexión o el lector no respondió. Probá de nuevo."
+  };
+  function linkValido(t) { return /^https?:\/\/(www\.)?(wearebombo\.com|wearebombo\.app\.link)\//i.test(t); }
+  function extraerLink(t) { var m = String(t || "").match(/https?:\/\/[^\s]+/); return m ? m[0] : String(t || "").trim(); }
+
+  function viewCartelera() {
+    var hoyIso = hoy();
+    var lista = data.cartelera.slice();
+    var proximos = lista.filter(function (c) { return !c.fecha || c.fecha >= hoyIso; }).sort(function (a, b) { return (a.fecha || "").localeCompare(b.fecha || ""); });
+    var pasados = lista.filter(function (c) { return c.fecha && c.fecha < hoyIso; }).sort(function (a, b) { return b.fecha.localeCompare(a.fecha); });
+    if (!lista.length) {
+      return '<div class="empty"><strong>Todavía no agregaste eventos</strong>Tocá <b>Agregar evento</b> y pegá el link de Bombo. Armo la tarjeta con el flyer, la fecha y los precios de la entrada general y VIP.</div>';
+    }
+    var h = '<div class="cartel-list">' + proximos.map(cartelCard).join("") + "</div>";
+    if (pasados.length) h += '<div class="section-h"><h2>Ya pasaron</h2></div><div class="cartel-list pasados">' + pasados.map(cartelCard).join("") + "</div>";
+    return h;
+  }
+
+  function precioFila(tipo, p) {
+    if (!p) return "";
+    return '<div class="precio' + (p.agotado ? " agotado" : "") + '"><span class="tipo">' + tipo +
+      (p.nombre ? " <small>" + esc(p.nombre) + "</small>" : "") + '</span><span class="valor num">' +
+      (p.agotado ? "Agotado" : money.format(p.precio)) + "</span></div>";
+  }
+
+  function cartelCard(c) {
+    var id = esc(c.id);
+    return '<article class="cartel">' +
+      '<div class="cartel-top">' +
+      (c.flyer ? '<img class="cartel-flyer" src="' + esc(c.flyer) + '" alt="Flyer de ' + esc(c.nombre) + '" loading="lazy">' : '<div class="cartel-flyer vacio">Sin flyer</div>') +
+      '<div class="cartel-info"><div class="cartel-fecha">' + esc(fechaLarga(c.fecha, c.hora)) + "</div>" +
+      "<h3>" + esc(c.nombre) + "</h3>" +
+      '<div class="precios">' + precioFila("General", c.general) + precioFila("VIP", c.vip) +
+      (!c.general && !c.vip ? '<div class="hint">Sin precios cargados</div>' : "") + "</div></div></div>" +
+      '<div class="cartel-acc">' +
+      (c.link ? '<button type="button" class="btn ghost sm" data-cartel-copiar="' + id + '">Copiar link</button>' : "") +
+      (c.link && LECTOR_URL ? '<button type="button" class="btn ghost sm" data-cartel-actualizar="' + id + '">Actualizar</button>' : "") +
+      '<button type="button" class="btn ghost sm" data-cartel-venta="' + id + '">Pasar a Mis Eventos</button>' +
+      '<button type="button" class="btn ghost sm borrar" data-cartel-borrar="' + id + '">' + (ui.cartelBorrar === c.id ? "¿Eliminar?" : "Eliminar") + "</button>" +
+      "</div></article>";
+  }
+
+  var cartelSheet = { fase: "link", datos: null };
+  function abrirCartel() {
+    cartelSheet = { fase: "link", datos: null };
+    pintarCartelSheet();
+    setTimeout(function () { var i = document.getElementById("c-link"); if (i) i.focus(); }, 60);
+  }
+  function pintarCartelSheet(error) {
+    var st = cartelSheet, d = st.datos;
+    var linkVal = (document.getElementById("c-link") || {}).value || (d && d.link) || "";
+    var h = '<div class="scrim" data-action="close-bg"><form class="sheet" id="cartel-form" role="dialog" aria-modal="true" aria-labelledby="c-title" novalidate>' +
+      '<div class="sheet-h"><h2 id="c-title">Agregar evento</h2><button type="button" class="x" data-action="close" aria-label="Cerrar">✕</button></div>' +
+      '<div class="field"><label for="c-link">Link de Bombo</label><div class="link-row">' +
+      '<input id="c-link" class="input" type="url" inputmode="url" autocomplete="off" autocapitalize="off" placeholder="https://wearebombo.com/evento/…" value="' + esc(linkVal) + '">' +
+      '<button type="button" class="btn ghost sm" data-action="c-pegar">Pegar</button></div></div>';
+    if (st.fase === "buscando") h += '<div class="c-estado">Buscando en Bombo…</div>';
+    if (error) h += '<div class="err">' + esc(error) + "</div>";
+    if (st.fase === "listo" && d) {
+      h += '<div class="cartel preview-cartel">' + '<div class="cartel-top">' +
+        (d.flyer ? '<img class="cartel-flyer" src="' + esc(d.flyer) + '" alt="">' : '<div class="cartel-flyer vacio">Sin flyer</div>') +
+        '<div class="cartel-info"><div class="cartel-fecha">' + esc(fechaLarga(d.fecha, d.hora)) + "</div><h3>" + esc(d.nombre) + "</h3>" +
+        '<div class="precios">' + precioFila("General", d.general) + precioFila("VIP", d.vip) + "</div></div></div></div>";
+    }
+    if (st.fase === "manual") {
+      var g = d && d.general, v = d && d.vip;
+      h += '<div class="field"><label for="c-nombre">Nombre del evento</label><input id="c-nombre" class="input" type="text" autocomplete="off" value="' + esc(d && d.nombre || "") + '"></div>' +
+        '<div class="grid2"><div class="field"><label for="c-fecha">Fecha</label><input id="c-fecha" class="input" type="date" value="' + esc(d && d.fecha || "") + '"></div>' +
+        '<div class="field"><label for="c-hora">Hora</label><input id="c-hora" class="input" type="time" value="' + esc(d && d.hora || "") + '"></div></div>' +
+        '<div class="grid2"><div class="field"><label for="c-gen">Entrada general</label><div class="money"><span>$</span><input id="c-gen" class="input miles num" type="text" inputmode="numeric" placeholder="0" value="' + (g && g.precio ? intf.format(g.precio) : "") + '"></div></div>' +
+        '<div class="field"><label for="c-vip">Entrada VIP</label><div class="money"><span>$</span><input id="c-vip" class="input miles num" type="text" inputmode="numeric" placeholder="0" value="' + (v && v.precio ? intf.format(v.precio) : "") + '"></div></div></div>';
+    }
+    h += '<div class="err" id="c-err"></div><div class="actions">';
+    if (st.fase === "link" || st.fase === "buscando") {
+      h += '<button class="btn" type="submit"' + (st.fase === "buscando" ? " disabled" : "") + ">Buscar evento</button>" +
+        '<button class="btn ghost" type="button" data-action="c-manual">Cargar a mano</button>';
+    } else {
+      h += '<button class="btn" type="submit">Guardar evento</button>';
+      if (st.fase === "listo") h += '<button class="btn ghost" type="button" data-action="c-manual">Corregir a mano</button>';
+    }
+    h += "</div></form></div>";
+    $sheetRoot.innerHTML = h;
+  }
+
+  function buscarCartel() {
+    var link = extraerLink(document.getElementById("c-link").value);
+    if (!linkValido(link)) { pintarCartelSheet(ERRORES_LECTOR.link); return; }
+    if (!LECTOR_URL) { cartelSheet = { fase: "manual", datos: { link: link } }; pintarCartelSheet(ERRORES_LECTOR["sin-lector"]); return; }
+    cartelSheet = { fase: "buscando", datos: { link: link } };
+    pintarCartelSheet();
+    consultarLector(link).then(function (j) {
+      if (!document.getElementById("cartel-form")) return;
+      cartelSheet = { fase: "listo", datos: datosDeLector(j, link) };
+      pintarCartelSheet();
+    }, function (e) {
+      if (!document.getElementById("cartel-form")) return;
+      cartelSheet = { fase: "link", datos: { link: link } };
+      pintarCartelSheet(ERRORES_LECTOR[e.code] || ERRORES_LECTOR.red);
+    });
+  }
+
+  function guardarCartel() {
+    var st = cartelSheet, d = st.datos || {};
+    var err = document.getElementById("c-err");
+    var item;
+    if (st.fase === "manual") {
+      var nombre = document.getElementById("c-nombre").value.trim();
+      var fecha = document.getElementById("c-fecha").value;
+      var gen = parseNum(document.getElementById("c-gen").value), vip = parseNum(document.getElementById("c-vip").value);
+      if (!nombre) { err.textContent = "Poné el nombre del evento."; return; }
+      if (!partes(fecha)) { err.textContent = "Elegí la fecha del evento."; return; }
+      var link = extraerLink(document.getElementById("c-link").value);
+      item = Object.assign({}, d, {
+        link: link && linkValido(link) ? link : (d.link || ""), nombre: nombre, fecha: fecha, hora: document.getElementById("c-hora").value || "",
+        general: isNaN(gen) ? null : { nombre: d.general && d.general.precio === gen ? d.general.nombre : "", precio: gen, agotado: false },
+        vip: isNaN(vip) ? null : { nombre: d.vip && d.vip.precio === vip ? d.vip.nombre : "", precio: vip, agotado: false },
+        actualizado: new Date().toISOString()
+      });
+    } else {
+      item = d;
+    }
+    var existente = item.link ? data.cartelera.find(function (c) { return c.link === item.link || (item.url && c.url === item.url); }) : null;
+    var antes = data.cartelera.slice();
+    if (existente) Object.assign(existente, item, { id: existente.id });
+    else data.cartelera.push(Object.assign({ id: nuevoId() }, item));
+    if (!persist()) { data.cartelera = antes; return; }
+    closeSheet();
+    render();
+    toast(existente ? "Evento actualizado" : "Evento guardado");
+  }
+
+  function actualizarCartel(id) {
+    var c = data.cartelera.find(function (x) { return x.id === id; });
+    if (!c || !c.link) return;
+    toast("Buscando precios en Bombo…");
+    consultarLector(c.link).then(function (j) {
+      var nuevo = datosDeLector(j, c.link);
+      Object.assign(c, nuevo);
+      persist();
+      render();
+      toast("Precios actualizados");
+    }, function (e) { toast(ERRORES_LECTOR[e.code] || ERRORES_LECTOR.red); });
+  }
+
+  function copiarLink(id) {
+    var c = data.cartelera.find(function (x) { return x.id === id; });
+    if (!c || !c.link) return;
+    try {
+      navigator.clipboard.writeText(c.link).then(function () { toast("Link copiado"); }, function () { toast("No pude copiar. Abrí el evento y copiá el link desde Bombo."); });
+    } catch (e) { toast("No pude copiar. Abrí el evento y copiá el link desde Bombo."); }
+  }
+
+  function borrarCartel(id) {
+    if (ui.cartelBorrar !== id) {
+      ui.cartelBorrar = id;
+      render();
+      clearTimeout(borrarCartel.t);
+      borrarCartel.t = setTimeout(function () { if (ui.cartelBorrar === id) { ui.cartelBorrar = null; if (ui.view === "cartelera") render(); } }, 4000);
+      return;
+    }
+    var antes = data.cartelera;
+    data.cartelera = data.cartelera.filter(function (c) { return c.id !== id; });
+    if (!persist()) { data.cartelera = antes; return; }
+    ui.cartelBorrar = null;
+    render();
+    toast("Evento eliminado");
+  }
+
+  function pasarAMisEventos(id) {
+    var c = data.cartelera.find(function (x) { return x.id === id; });
+    if (!c) return;
+    openSheet(null, false, { nombre: c.nombre, fecha: c.fecha });
+  }
+
   // ---------- Mis productoras (Ajustes) ----------
   function fechasDe(pid) { return data.eventos.filter(function (e) { return e.productoraId === pid; }).length; }
 
@@ -885,12 +1136,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // ---------- sheet (new / edit) ----------
   var sheet = { id: null, armedDelete: false };
 
-  function openSheet(id, focoPct) {
+  function openSheet(id, focoPct, prefill) {
     var ev = id ? buscar(id) : null;
     if (id && !ev) return;
     sheet.id = id || null;
     sheet.armedDelete = false;
-    var f = ev || { nombre: "", fecha: hoy(), entradas: "", facturado: "", cobrado: false, fechaCobro: null };
+    var f = ev || Object.assign({ nombre: "", fecha: hoy(), entradas: "", facturado: "", cobrado: false, fechaCobro: null }, prefill || {});
     sheet.pctInicial = ev ? pctDe(ev) : data.pct;
     var pctTxt = sheet.pctInicial == null ? "" : pctf.format(sheet.pctInicial);
     $sheetRoot.innerHTML =
@@ -1151,7 +1402,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   }
 
   function exportJson() {
-    var payload = { app: "comisiones-rrpp", version: 2, exportado: new Date().toISOString(), pct: data.pct, productoras: data.productoras, eventos: data.eventos };
+    var payload = { app: "comisiones-rrpp", version: 2, exportado: new Date().toISOString(), pct: data.pct, productoras: data.productoras, eventos: data.eventos, cartelera: data.cartelera };
     entregarArchivo(JSON.stringify(payload, null, 2), "comisiones-rrpp-" + hoy() + ".json", "application/json").then(function (ok) {
       if (!ok) return;
       data.ultimaCopia = new Date().toISOString();
@@ -1196,7 +1447,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         });
         var productoras = Array.isArray(d.productoras) ? d.productoras.filter(function (p) { return p && p.id && typeof p.nombre === "string"; })
           .map(function (p) { return { id: String(p.id), nombre: p.nombre, factura: !!p.factura, valorFree: typeof p.valorFree === "number" ? p.valorFree : null }; }) : null;
-        ui.pendingImport = { eventos: eventos, productoras: productoras, pct: typeof d.pct === "number" ? d.pct : null, exportado: d.exportado || null };
+        ui.pendingImport = { eventos: eventos, productoras: productoras, cartelera: Array.isArray(d.cartelera) ? d.cartelera : null, pct: typeof d.pct === "number" ? d.pct : null, exportado: d.exportado || null };
         render();
       } catch (e) {
         if (err) err.textContent = "Ese archivo no es una copia de esta app. Elegí el archivo comisiones-rrpp-….json que guardaste.";
@@ -1209,11 +1460,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   function confirmarImport() {
     var p = ui.pendingImport;
     if (!p) return;
-    var antes = { pct: data.pct, eventos: data.eventos, productoras: data.productoras };
+    var antes = { pct: data.pct, eventos: data.eventos, productoras: data.productoras, cartelera: data.cartelera };
     data.eventos = p.eventos;
     if (p.productoras) data.productoras = p.productoras;
+    if (p.cartelera) data.cartelera = p.cartelera;
     if (p.pct != null) data.pct = p.pct;
-    if (!persist()) { data.pct = antes.pct; data.eventos = antes.eventos; data.productoras = antes.productoras; return; }
+    if (!persist()) { data.pct = antes.pct; data.eventos = antes.eventos; data.productoras = antes.productoras; data.cartelera = antes.cartelera; return; }
     ui.pendingImport = null;
     render();
     toast("Copia restaurada: " + p.eventos.length + " eventos");
@@ -1221,9 +1473,13 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   // ---------- events ----------
   document.addEventListener("click", function (e) {
-    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-pct],[data-pe],[data-toggle],[data-facturar],[data-prod-edit],[data-panel],[data-rango],[data-action]");
+    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-pct],[data-pe],[data-toggle],[data-facturar],[data-prod-edit],[data-panel],[data-rango],[data-cartel-copiar],[data-cartel-actualizar],[data-cartel-venta],[data-cartel-borrar],[data-action]");
     if (!t) return;
     if (t.hasAttribute("data-facturar")) { marcarFacturada(t.getAttribute("data-facturar")); return; }
+    if (t.hasAttribute("data-cartel-copiar")) { copiarLink(t.getAttribute("data-cartel-copiar")); return; }
+    if (t.hasAttribute("data-cartel-actualizar")) { actualizarCartel(t.getAttribute("data-cartel-actualizar")); return; }
+    if (t.hasAttribute("data-cartel-venta")) { pasarAMisEventos(t.getAttribute("data-cartel-venta")); return; }
+    if (t.hasAttribute("data-cartel-borrar")) { borrarCartel(t.getAttribute("data-cartel-borrar")); return; }
     if (t.hasAttribute("data-panel")) {
       if (t.getAttribute("data-panel") === "ev") ui.panelEv = !ui.panelEv; else ui.panelRend = !ui.panelRend;
       render();
@@ -1241,7 +1497,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       var pn = document.getElementById("pe-nombre"); if (pn) pn.closest(".prod-row").scrollIntoView({ block: "nearest", behavior: "smooth" });
       return;
     }
-    if (t.hasAttribute("data-view")) { ui.view = t.getAttribute("data-view"); ui.editPct = null; ui.editProd = null; ui.prodBorrar = false; render(); document.getElementById("scroller").scrollTop = 0; return; }
+    if (t.hasAttribute("data-view")) { ui.view = t.getAttribute("data-view"); ui.editPct = null; ui.editProd = null; ui.prodBorrar = false; ui.cartelBorrar = null; render(); document.getElementById("scroller").scrollTop = 0; return; }
     if (t.hasAttribute("data-filtro")) { ui.filtro = t.getAttribute("data-filtro"); render(); return; }
     if (t.hasAttribute("data-rank")) { ui.rankBy = t.getAttribute("data-rank"); render(); return; }
     if (t.hasAttribute("data-edit")) { openSheet(t.getAttribute("data-edit")); return; }
@@ -1265,6 +1521,18 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (t.hasAttribute("data-toggle")) { togglePago(t.getAttribute("data-toggle")); return; }
     var a = t.getAttribute("data-action");
     if (a === "new") openSheet(null);
+    else if (a === "cartel-nuevo") abrirCartel();
+    else if (a === "c-manual") {
+      var lk = extraerLink((document.getElementById("c-link") || {}).value);
+      cartelSheet = { fase: "manual", datos: Object.assign({}, cartelSheet.datos || {}, { link: lk }) };
+      pintarCartelSheet();
+    }
+    else if (a === "c-pegar") {
+      var ci = document.getElementById("c-link");
+      try {
+        navigator.clipboard.readText().then(function (txt) { ci.value = extraerLink(txt); }, function () { ci.focus(); toast("Mantené apretado el campo y elegí Pegar"); });
+      } catch (err) { ci.focus(); toast("Mantené apretado el campo y elegí Pegar"); }
+    }
     else if (a === "close") closeSheet();
     else if (a === "close-bg" && e.target === t) closeSheet();
     else if (a === "delete") deleteFromSheet();
@@ -1288,6 +1556,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   document.addEventListener("submit", function (e) {
     e.preventDefault();
     if (e.target.id === "ev-form") saveSheet();
+    else if (e.target.id === "cartel-form") { if (cartelSheet.fase === "link") buscarCartel(); else if (cartelSheet.fase !== "buscando") guardarCartel(); }
     else if (e.target.id === "pe-form") guardarPctFecha();
     else if (e.target.id === "pct-form") savePct();
     else if (e.target.id === "prod-add-form") agregarProductora();

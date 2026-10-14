@@ -1,6 +1,7 @@
 // Offline support: the app shell is cached; same-origin requests go network-first so updates arrive,
-// Google Fonts are cache-first.
-var CACHE = "comisiones-v18";
+// Google Fonts and Bombo flyers are cache-first (flyers live in their own cache that survives updates).
+var CACHE = "comisiones-v19";
+var FLYERS = "comisiones-flyers";
 var SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", function (e) {
@@ -9,7 +10,7 @@ self.addEventListener("install", function (e) {
 
 self.addEventListener("activate", function (e) {
   e.waitUntil(caches.keys().then(function (keys) {
-    return Promise.all(keys.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); }));
+    return Promise.all(keys.filter(function (k) { return k !== CACHE && k !== FLYERS; }).map(function (k) { return caches.delete(k); }));
   }).then(function () { return self.clients.claim(); }));
 });
 
@@ -33,6 +34,15 @@ self.addEventListener("fetch", function (e) {
       return hit || fetch(req).then(function (res) {
         var copy = res.clone(); caches.open(CACHE).then(function (c) { c.put(req, copy); });
         return res;
+      });
+    }));
+    return;
+  }
+
+  if (url.hostname === "files.wearebombo.com" || url.hostname === "storage.googleapis.com") {
+    e.respondWith(caches.open(FLYERS).then(function (c) {
+      return c.match(req).then(function (hit) {
+        return hit || fetch(req).then(function (res) { c.put(req, res.clone()); return res; });
       });
     }));
   }
