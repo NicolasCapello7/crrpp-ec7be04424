@@ -142,6 +142,8 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .preview-cartel .cartel-flyer { width: 96px; }
 .cartel-top[data-cartel-editar] { cursor: pointer; }
 .auto-estado { font-size: 12px; color: var(--muted); margin-top: -8px; }
+.cuenta .g-btn { min-height: 44px; }
+.link-publico { display: block; font-weight: 700; color: var(--accent); text-decoration: none; overflow-wrap: anywhere; font-size: 15px; }
 .chips.prod-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; }
 .chips.prod-chips::-webkit-scrollbar { display: none; }
 .chips.prod-chips .chip { flex: 0 0 auto; white-space: nowrap; }
@@ -354,13 +356,18 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // Persisted data: { pct: number|null, eventos: [...], productoras: [{id, nombre, factura}], ultimaCopia: ISO|null }
   var data = { pct: null, eventos: [], productoras: [], cartelera: [], ultimaCopia: null };
   // Lector de Bombo (Cloudflare Worker, see /lector). Empty until it is deployed.
-  var LECTOR_URL = "https://lector-bombo.nicolascapelloubeda.workers.dev";
+  var API_URL = "https://eventos.nicolascapelloubeda.workers.dev";
+  var LECTOR_URL = API_URL + "/lector";
+  var GOOGLE_CLIENT_ID = "174152864828-tbk0qlbnm28kak0lvbum8mvi296n2mtj.apps.googleusercontent.com";
+  // RRPP account lives apart from the data so backups never carry the session token
+  var CUENTA_KEY = "comisiones-rrpp-cuenta";
+  var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var PRODUCTORAS_INICIALES = [
     { id: "p-mandarine", nombre: "Mandarine", factura: true },
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 31;
+  var VERSION = 32;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
@@ -389,7 +396,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     } catch (e) { storageOk = false; }
   }
   function persist() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); storageOk = true; return true; }
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); storageOk = true; programarSubida(); return true; }
     catch (e) { storageOk = false; toast("No se pudo guardar en el celular. Revisá que no estés en modo privado."); return false; }
   }
   function nuevoId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -569,6 +576,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     $main.innerHTML = '<div class="stack">' + html + "</div>";
     if (keep != null) { var np = document.getElementById("pct-input"); np.value = keep; np.focus(); }
     ajustarChips();
+    montarBotonesGoogle();
   }
 
   function totales(lista) {
@@ -794,7 +802,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   }
 
   function viewAjustes() {
-    var h = '<section class="card"><h2>Tu comisión</h2>' +
+    var h = cuentaCard(true) + '<section class="card"><h2>Tu comisión</h2>' +
       "<p>Porcentaje que cobrás sobre el monto facturado de cada evento.</p>" +
       '<form id="pct-form" class="row" novalidate>' +
       '<div class="pct-wrap"><input id="pct-input" class="input" type="text" inputmode="decimal" aria-label="Porcentaje de comisión" value="' +
@@ -883,6 +891,178 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   function linkValido(t) { return /^https?:\/\/(www\.)?(wearebombo\.com|wearebombo\.app\.link)\//i.test(t); }
   function extraerLink(t) { var m = String(t || "").match(/https?:\/\/[^\s]+/); return m ? m[0] : String(t || "").trim(); }
 
+  // ---------- RRPP account (Google) and server sync ----------
+  function leerCuenta() {
+    try { var c = JSON.parse(localStorage.getItem(CUENTA_KEY) || "null"); cuenta = c && c.token ? c : null; } catch (e) { cuenta = null; }
+  }
+  function guardarCuenta() {
+    try { if (cuenta) localStorage.setItem(CUENTA_KEY, JSON.stringify(cuenta)); else localStorage.removeItem(CUENTA_KEY); } catch (e) { /* ignore */ }
+  }
+  function linkPublico() { return cuenta && cuenta.slug ? API_URL + "/" + cuenta.slug : ""; }
+  function slugDe(t) {
+    return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30).replace(/-+$/g, "");
+  }
+  function api(ruta, opciones) {
+    opciones = opciones || {};
+    var headers = { "Content-Type": "application/json" };
+    if (cuenta && cuenta.token) headers.Authorization = "Bearer " + cuenta.token;
+    return fetch(API_URL + ruta, { method: opciones.method || "GET", headers: headers, body: opciones.body ? JSON.stringify(opciones.body) : undefined })
+      .then(function (r) {
+        return r.json().catch(function () { return { ok: false, error: "red" }; }).then(function (j) {
+          if (r.status === 401 && j.error === "sesion") { cuenta = null; guardarCuenta(); render(); toast("Tu sesión venció. Entrá de nuevo con Google."); }
+          if (!j.ok) throw j;
+          return j;
+        });
+      }, function () { throw { error: "red" }; });
+  }
+
+  var sync = { estado: "", timer: null, ultimo: null };
+  function textoSync() {
+    if (sync.estado === "subiendo") return "Guardando en tu página…";
+    if (sync.estado === "error") return "Sin conexión: tus cambios se publican cuando vuelvas a tener internet.";
+    return "Tu página se actualiza sola cuando agregás, editás o borrás eventos.";
+  }
+  function programarSubida() {
+    if (!cuenta || !cuenta.sincronizado) return;
+    var foto = JSON.stringify(data.cartelera);
+    if (foto === sync.ultimo) return;
+    clearTimeout(sync.timer);
+    sync.timer = setTimeout(subirEventos, 800);
+  }
+  function subirEventos() {
+    if (!cuenta || !cuenta.sincronizado) return;
+    var foto = JSON.stringify(data.cartelera);
+    sync.estado = "subiendo"; pintarSync();
+    api("/api/eventos", { method: "PUT", body: { eventos: data.cartelera } }).then(function () {
+      sync.ultimo = foto; sync.estado = ""; pintarSync();
+    }, function () { sync.estado = "error"; pintarSync(); });
+  }
+  function pintarSync() { var el = document.getElementById("sync-estado"); if (el) el.textContent = textoSync(); }
+  window.addEventListener("online", function () { if (sync.estado === "error") subirEventos(); });
+
+  // Pull the account and its events from the server. First time on this device: merge local + server.
+  function traerCuenta() {
+    if (!cuenta) return Promise.resolve();
+    return api("/api/yo").then(function (j) {
+      Object.assign(cuenta, j.usuario);
+      if (!cuenta.sincronizado) {
+        var porId = {};
+        j.eventos.forEach(function (c) { porId[c.id] = true; });
+        data.cartelera = j.eventos.concat(data.cartelera.filter(function (c) { return !porId[c.id]; }));
+        cuenta.sincronizado = true;
+        guardarCuenta();
+        try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { /* ignore */ }
+        subirEventos();
+      } else {
+        data.cartelera = j.eventos;
+        sync.ultimo = JSON.stringify(j.eventos);
+        guardarCuenta();
+        try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { /* ignore */ }
+      }
+      render();
+    }, function () { /* offline: keep the local copy */ });
+  }
+
+  var gis = { cargando: false, listo: false };
+  function cargarGoogle() {
+    if (gis.listo || gis.cargando || !GOOGLE_CLIENT_ID) return;
+    gis.cargando = true;
+    var sc = document.createElement("script");
+    sc.src = "https://accounts.google.com/gsi/client";
+    sc.async = true;
+    sc.onload = function () {
+      gis.cargando = false;
+      if (!window.google || !window.google.accounts) return;
+      window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: alEntrarConGoogle, ux_mode: "popup", auto_select: false, cancel_on_tap_outside: true });
+      gis.listo = true;
+      montarBotonesGoogle();
+    };
+    sc.onerror = function () { gis.cargando = false; };
+    document.head.appendChild(sc);
+  }
+  function montarBotonesGoogle() {
+    var lugares = document.querySelectorAll(".g-btn");
+    if (!lugares.length) return;
+    if (!gis.listo) { cargarGoogle(); return; }
+    Array.prototype.forEach.call(lugares, function (el) {
+      if (el.childElementCount) return;
+      window.google.accounts.id.renderButton(el, { theme: "filled_black", size: "large", shape: "pill", text: "continue_with", locale: "es", width: Math.min(320, el.clientWidth || 320) });
+    });
+  }
+  function alEntrarConGoogle(resp) {
+    toast("Entrando…");
+    fetch(API_URL + "/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ credential: resp.credential }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.ok) throw j;
+        cuenta = Object.assign({ token: j.token, sugerido: j.sugerido, sincronizado: false }, j.usuario);
+        guardarCuenta();
+        toast("Entraste como " + j.usuario.email);
+        return traerCuenta();
+      })
+      .catch(function () { toast("No pude entrar con Google. Probá de nuevo."); });
+  }
+  function salir() {
+    var t = cuenta;
+    cuenta = null; guardarCuenta(); render();
+    if (t) fetch(API_URL + "/api/logout", { method: "POST", headers: { Authorization: "Bearer " + t.token } }).catch(function () {});
+    toast("Cerraste sesión. Tus eventos quedan en este celular.");
+  }
+  function guardarPerfil(nombreId, errId) {
+    var nombre = document.getElementById(nombreId).value.trim();
+    var err = document.getElementById(errId);
+    var slug = slugDe(nombre);
+    if (slug.length < 3) { err.textContent = "Usá al menos 3 letras o números."; return; }
+    api("/api/perfil", { method: "PUT", body: { nombre: nombre, slug: slug } }).then(function (j) {
+      Object.assign(cuenta, j.usuario); guardarCuenta(); render();
+      toast("Tu link: " + linkPublico().replace("https://", ""));
+    }, function (e) {
+      err.textContent = e.error === "slug-ocupado" ? "Ese nombre ya lo usa otro RRPP. Probá con otro (por ejemplo agregando tu apellido)." : "No se pudo guardar. Revisá tu conexión.";
+    });
+  }
+  function compartirLink() {
+    var link = linkPublico();
+    if (navigator.share) { navigator.share({ title: "Próximos eventos", url: link }).catch(function () {}); return; }
+    copiarTexto(link);
+  }
+  function copiarTexto(t) {
+    try { navigator.clipboard.writeText(t).then(function () { toast("Link copiado"); }, function () { toast("No pude copiar el link"); }); }
+    catch (e) { toast("No pude copiar el link"); }
+  }
+
+  function cuentaCard(enAjustes) {
+    if (!cuenta) {
+      return '<section class="card cuenta"><h2>' + (enAjustes ? "Tu cuenta" : "Tu página de eventos") + "</h2>" +
+        "<p>Entrá con Google para tener tu link propio: tus clientes ven tus próximos eventos con precios al día y compran con tu link de Bombo.</p>" +
+        '<div class="g-btn"></div></section>';
+    }
+    if (!cuenta.slug) {
+      return '<section class="card cuenta"><h2>Elegí tu nombre público</h2>' +
+        "<p>Va en tu link. Por ejemplo, con <b>Nico Capello</b> tu link es <b>…/nico-capello</b>.</p>" +
+        '<div class="field"><label for="perfil-nombre">Nombre público</label><input id="perfil-nombre" class="input" type="text" autocomplete="off" value="' + esc(cuenta.nombre || "") + '" placeholder="' + esc(cuenta.sugerido || "Tu nombre") + '"></div>' +
+        '<p class="hint" id="perfil-preview">' + esc(API_URL.replace("https://", "") + "/" + (slugDe(cuenta.nombre || cuenta.sugerido) || "tu-nombre")) + "</p>" +
+        '<div class="err" id="perfil-err"></div>' +
+        '<div class="row"><button class="btn" type="button" data-action="perfil-guardar">Crear mi link</button></div></section>';
+    }
+    var link = linkPublico();
+    var h = '<section class="card cuenta"><h2>' + (enAjustes ? "Tu cuenta" : "Tu página de eventos") + "</h2>" +
+      '<a class="link-publico" href="' + esc(link) + '" target="_blank" rel="noopener">' + esc(link.replace("https://", "")) + "</a>" +
+      '<div class="row"><button class="btn" type="button" data-action="link-compartir">Compartir</button>' +
+      '<button class="btn ghost" type="button" data-action="link-copiar">Copiar link</button></div>';
+    if (enAjustes) {
+      h += '<p>Entraste como <b>' + esc(cuenta.email) + "</b>.</p>" +
+        '<div class="field"><label for="ajustes-nombre">Nombre público</label><input id="ajustes-nombre" class="input" type="text" autocomplete="off" value="' + esc(cuenta.nombre || "") + '"></div>' +
+        '<p class="hint">Si lo cambiás, cambia tu link y el anterior deja de funcionar.</p>' +
+        '<div class="err" id="ajustes-err"></div>' +
+        '<div class="row"><button class="btn ghost" type="button" data-action="perfil-guardar-ajustes">Guardar nombre</button>' +
+        '<button class="btn ghost" type="button" data-action="salir">Cerrar sesión</button></div>';
+    } else {
+      h += '<p class="hint" id="sync-estado">' + esc(textoSync()) + "</p>";
+    }
+    return h + "</section>";
+  }
+
   function viewCartelera() {
     var hoyIso = hoy();
     var usadas = {};
@@ -907,11 +1087,11 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         }).join("") + "</div>";
     }
     if (!data.cartelera.length) {
-      return '<div class="empty"><strong>Todavía no agregaste eventos</strong>Tocá <b>Agregar evento</b> y pegá el link de Bombo. Armo la tarjeta con el flyer, la fecha y los precios de la entrada general y VIP.</div>';
+      return cuentaCard(false) + '<div class="empty"><strong>Todavía no agregaste eventos</strong>Tocá <b>Agregar evento</b> y pegá el link de Bombo. Armo la tarjeta con el flyer, la fecha y los precios de la entrada general y VIP.</div>';
     }
-    var h = chipsProd + (LECTOR_URL && data.cartelera.some(function (c) { return c.link; }) ? '<div class="auto-estado" id="auto-estado">' + esc(textoAuto()) + "</div>" : "") +
+    var h = cuentaCard(false) + chipsProd + (LECTOR_URL && data.cartelera.some(function (c) { return c.link; }) ? '<div class="auto-estado" id="auto-estado">' + esc(textoAuto()) + "</div>" : "") +
       '<div class="cartel-list">' + proximos.map(cartelCard).join("") + "</div>";
-    if (!lista.length) h = chipsProd + '<div class="empty">No hay eventos de esa productora.</div>';
+    if (!lista.length) h = cuentaCard(false) + chipsProd + '<div class="empty">No hay eventos de esa productora.</div>';
     if (pasados.length) h += '<div class="section-h"><h2>Ya pasaron</h2></div><div class="cartel-list pasados">' + pasados.map(cartelCard).join("") + "</div>";
     return h;
   }
@@ -1674,6 +1854,11 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     else if (a === "import-confirm") confirmarImport();
     else if (a === "import-cancel") { ui.pendingImport = null; render(); }
     else if (a === "cartel-borrar-no") { ui.cartelBorrar = null; render(); }
+    else if (a === "perfil-guardar") guardarPerfil("perfil-nombre", "perfil-err");
+    else if (a === "perfil-guardar-ajustes") guardarPerfil("ajustes-nombre", "ajustes-err");
+    else if (a === "link-compartir") compartirLink();
+    else if (a === "link-copiar") copiarTexto(linkPublico());
+    else if (a === "salir") salir();
     else if (a === "pct-cancel") { ui.editPct = null; render(); curarLuego(); }
     else if (a === "prod-cancel") { ui.editProd = null; ui.prodBorrar = false; render(); curarLuego(); }
     else if (a === "prod-delete") borrarProductora();
@@ -1713,6 +1898,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (e.target.classList && e.target.classList.contains("miles")) maskMiles(e.target);
     if (e.target.id === "f-facturado" || e.target.id === "f-pctev" || e.target.id === "f-frees" || e.target.id === "f-np-free") updatePreview();
     if (e.target.id === "pe-input") previewPct();
+    if (e.target.id === "perfil-nombre") {
+      var pv = document.getElementById("perfil-preview");
+      if (pv) pv.textContent = API_URL.replace("https://", "") + "/" + (slugDe(e.target.value) || "tu-nombre");
+    }
   });
   document.addEventListener("change", function (e) {
     if (e.target.id === "f-frees-on") {
@@ -1796,7 +1985,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   // ---------- start ----------
   load();
+  leerCuenta();
   render();
+  traerCuenta();
   if (navigator.storage && navigator.storage.persist) { navigator.storage.persist().catch(function () {}); }
   if ("serviceWorker" in navigator) {
     // Check for a new version on every open; reload once when it takes over (data is untouched)

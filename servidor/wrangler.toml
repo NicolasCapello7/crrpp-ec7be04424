@@ -1,0 +1,12 @@
+name = "eventos"
+main = "worker.js"
+compatibility_date = "2025-06-01"
+
+[vars]
+APP_ORIGIN = "https://nicolascapello7.github.io"
+GOOGLE_CLIENT_ID = "174152864828-tbk0qlbnm28kak0lvbum8mvi296n2mtj.apps.googleusercontent.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "rrpp-db"
+database_id = "4155f35e-8af7-414f-9a39-9ea458760d5b"
