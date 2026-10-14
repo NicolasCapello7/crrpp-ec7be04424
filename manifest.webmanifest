@@ -1,7 +1,7 @@
 {
-  "name": "Comisiones RRPP",
-  "short_name": "Comisiones",
-  "description": "Registro de eventos vendidos, comisiones y cobros.",
+  "name": "BPM Tickets",
+  "short_name": "BPM Tickets",
+  "description": "Eventos de música electrónica, entradas y herramientas para RRPP.",
   "lang": "es-AR",
   "start_url": "./",
   "scope": "./",

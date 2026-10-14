@@ -4,7 +4,7 @@
 //   /<nombre-del-rrpp>   página pública con los próximos eventos de ese RRPP, para sus clientes
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
 // Shown when the link is shared (WhatsApp, Instagram…): the app logo, not an event flyer
-const LOGO_URL = "https://nicolascapello7.github.io/crrpp-ec7be04424/icon-512.png";
+const LOGO_URL = "https://nicolascapello7.github.io/crrpp-ec7be04424/og.png";
 const RESERVADOS = new Set(["api", "lector", "favicon.ico", "robots.txt", "admin", "www", "app", "login"]);
 const VIEJO_MS = 15 * 60 * 1000;          // public page refreshes prices older than this
 const SESION_MS = 180 * 24 * 3600 * 1000; // app sessions last 6 months
@@ -303,14 +303,15 @@ function paginaHTML(lista, u, nonce) {
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Próximos eventos</title>
+<title>Próximos eventos · BPM Tickets</title>
 <meta name="description" content="${esc(lista.map(c => c.nombre).slice(0, 5).join(" · ") || "Entradas para los próximos eventos")}">
-<meta property="og:title" content="Próximos eventos">
+<meta property="og:title" content="Próximos eventos · BPM Tickets">
+<meta property="og:site_name" content="BPM Tickets">
 <meta property="og:description" content="${esc(lista.map(c => c.nombre).slice(0, 5).join(" · ") || "Entradas para los próximos eventos")}">
 <meta property="og:image" content="${LOGO_URL}">
-<meta property="og:image:width" content="512">
-<meta property="og:image:height" content="512">
-<meta name="twitter:card" content="summary">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#100e15">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700&family=Big+Shoulders+Display:wght@800&display=swap">
@@ -332,6 +333,8 @@ h2 { margin: 0; font-size: 19px; line-height: 1.25; overflow-wrap: anywhere; }
 .precio b { font-variant-numeric: tabular-nums; white-space: nowrap; } .precio.agotado b { color: var(--danger); }
 .comprar { margin-top: 10px; display: block; text-align: center; text-decoration: none; background: var(--accent); color: var(--ink); font-weight: 700; font-size: 16px; padding: 14px; border-radius: 12px; }
 .comprar.off { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+.marca { display: flex; align-items: center; gap: 8px; font-family: "Big Shoulders Display", "Arial Narrow", sans-serif; font-weight: 800; font-size: 18px; letter-spacing: .04em; margin-bottom: -8px; }
+.marca .logo { width: 30px; height: auto; } .marca b { color: var(--accent); font-weight: 800; }
 .redes { display: flex; gap: 10px; flex-wrap: wrap; margin-top: -4px; }
 .red { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px 8px 10px; font-weight: 600; font-size: 14px; }
 .red svg { width: 22px; height: 22px; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; }
@@ -349,6 +352,7 @@ h2 { margin: 0; font-size: 19px; line-height: 1.25; overflow-wrap: anywhere; }
 .vacio { color: var(--muted); text-align: center; padding: 40px 16px; border: 1px dashed var(--line); border-radius: 16px; }
 </style></head>
 <body><main>
+<div class="marca"><svg class="logo" viewBox="0 0 90 56" aria-hidden="true"><path d="M8 0h74a8 8 0 0 1 8 8v12.4a7.6 7.6 0 0 0 0 15.2V48a8 8 0 0 1-8 8H8a8 8 0 0 1-8-8V35.6a7.6 7.6 0 0 0 0-15.2V8a8 8 0 0 1 8-8z" fill="#39ff7f"/><polyline points="17,28 24,28 31,10 41,46 49,17 55,28 73,28" fill="none" stroke="#100e15" stroke-width="6.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>BPM <b>TICKETS</b></span></div>
 <h1>Próximos <span>eventos</span></h1>
 ${redesHTML(u)}
 ${tarjetas ? filtrosHTML(lista) + tarjetas : '<div class="vacio">No hay eventos publicados por ahora.</div>'}
