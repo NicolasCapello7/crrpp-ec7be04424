@@ -126,6 +126,7 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .cartel-acc .btn.sm { flex: 1 1 0; min-width: 0; white-space: nowrap; padding: 8px 6px; font-size: 13.5px; }
 .cartel-acc .icon-btn.sq { width: 38px; height: 38px; border-radius: 10px; background: var(--surface-2); border: 0; }
 .cartel-acc .borrar { color: var(--danger); }
+.cartel-acc a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; min-height: 38px; box-sizing: border-box; }
 .link-row { display: flex; gap: 8px; }
 .link-row .input { flex: 1; min-width: 0; }
 .c-estado { font-size: 14px; color: var(--muted); }
@@ -350,7 +351,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 24;
+  var VERSION = 25;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
@@ -922,8 +923,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       '<div class="precios">' + precioFila("General", c.general) + precioFila("VIP", c.vip) +
       (!c.general && !c.vip ? '<div class="hint">Sin precios cargados</div>' : "") + "</div></div></div>" +
       '<div class="cartel-acc">' +
-      (c.link ? '<button type="button" class="btn ghost sm" data-cartel-copiar="' + id + '">Copiar link</button>' : "") +
-      '<button type="button" class="btn ghost sm" data-cartel-venta="' + id + '">A Mis Eventos</button>' +
+      (c.link ? '<a class="btn ghost sm ir" href="' + esc(c.url || c.link) + '" target="_blank" rel="noopener">Ir al evento</a>' : "") +
       (c.link && LECTOR_URL ? '<button type="button" class="icon-btn sq" data-cartel-actualizar="' + id + '" aria-label="Actualizar precios">' + ICONO_ACTUALIZAR + "</button>" : "") +
       (ui.cartelBorrar === c.id
         ? '<button type="button" class="btn ghost sm borrar" data-cartel-borrar="' + id + '">¿Eliminar?</button>'
@@ -1106,13 +1106,6 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     }, function (e) { toast(ERRORES_LECTOR[e.code] || ERRORES_LECTOR.red); });
   }
 
-  function copiarLink(id) {
-    var c = data.cartelera.find(function (x) { return x.id === id; });
-    if (!c || !c.link) return;
-    try {
-      navigator.clipboard.writeText(c.link).then(function () { toast("Link copiado"); }, function () { toast("No pude copiar. Abrí el evento y copiá el link desde Bombo."); });
-    } catch (e) { toast("No pude copiar. Abrí el evento y copiá el link desde Bombo."); }
-  }
 
   function borrarCartel(id) {
     if (ui.cartelBorrar !== id) {
@@ -1137,11 +1130,6 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     pintarCartelSheet();
   }
 
-  function pasarAMisEventos(id) {
-    var c = data.cartelera.find(function (x) { return x.id === id; });
-    if (!c) return;
-    openSheet(null, false, { nombre: c.nombre, fecha: c.fecha, productoraId: c.productoraId || null });
-  }
 
   // ---------- Mis productoras (Ajustes) ----------
   function fechasDe(pid) { return data.eventos.filter(function (e) { return e.productoraId === pid; }).length; }
@@ -1584,14 +1572,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   // ---------- events ----------
   document.addEventListener("click", function (e) {
-    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-pct],[data-pe],[data-toggle],[data-facturar],[data-prod-edit],[data-panel],[data-rango],[data-cartel-copiar],[data-cartel-actualizar],[data-cartel-venta],[data-cartel-borrar],[data-cartel-prod],[data-cartel-editar],[data-action]");
+    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-pct],[data-pe],[data-toggle],[data-facturar],[data-prod-edit],[data-panel],[data-rango],[data-cartel-actualizar],[data-cartel-borrar],[data-cartel-prod],[data-cartel-editar],[data-action]");
     if (!t) return;
     if (t.hasAttribute("data-facturar")) { marcarFacturada(t.getAttribute("data-facturar")); return; }
     if (t.hasAttribute("data-cartel-prod")) { ui.cartelProd = t.getAttribute("data-cartel-prod"); render(); return; }
     if (t.hasAttribute("data-cartel-editar")) { editarCartel(t.getAttribute("data-cartel-editar")); return; }
-    if (t.hasAttribute("data-cartel-copiar")) { copiarLink(t.getAttribute("data-cartel-copiar")); return; }
     if (t.hasAttribute("data-cartel-actualizar")) { actualizarCartel(t.getAttribute("data-cartel-actualizar")); return; }
-    if (t.hasAttribute("data-cartel-venta")) { pasarAMisEventos(t.getAttribute("data-cartel-venta")); return; }
     if (t.hasAttribute("data-cartel-borrar")) { borrarCartel(t.getAttribute("data-cartel-borrar")); return; }
     if (t.hasAttribute("data-panel")) {
       if (t.getAttribute("data-panel") === "ev") ui.panelEv = !ui.panelEv; else ui.panelRend = !ui.panelRend;
