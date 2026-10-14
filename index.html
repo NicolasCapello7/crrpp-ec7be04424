@@ -130,6 +130,10 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .link-row .input { flex: 1; min-width: 0; }
 .c-estado { font-size: 14px; color: var(--muted); }
 .preview-cartel .cartel-flyer { width: 96px; }
+.cartel-top[data-cartel-editar] { cursor: pointer; }
+.chips.prod-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; }
+.chips.prod-chips::-webkit-scrollbar { display: none; }
+.chips.prod-chips .chip { flex: 0 0 auto; white-space: nowrap; }
 .frees-row { align-items: stretch; }
 .frees-check { background: var(--surface-2); border-radius: 12px; padding: 0 12px; min-height: 48px; }
 
@@ -345,9 +349,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 20;
+  var VERSION = 21;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
-    filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null };
+    filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
   var $main = document.getElementById("main");
   var $fab = document.getElementById("fab");
@@ -867,13 +871,32 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   function viewCartelera() {
     var hoyIso = hoy();
-    var lista = data.cartelera.slice();
+    var usadas = {};
+    data.cartelera.forEach(function (c) { usadas[prod(c.productoraId) ? c.productoraId : "__sin"] = true; });
+    var conProd = Object.keys(usadas).some(function (k) { return k !== "__sin"; });
+    if (ui.cartelProd && !usadas[ui.cartelProd]) ui.cartelProd = "";
+    var lista = data.cartelera.filter(function (c) {
+      if (!ui.cartelProd) return true;
+      if (ui.cartelProd === "__sin") return !prod(c.productoraId);
+      return c.productoraId === ui.cartelProd;
+    });
     var proximos = lista.filter(function (c) { return !c.fecha || c.fecha >= hoyIso; }).sort(function (a, b) { return (a.fecha || "").localeCompare(b.fecha || ""); });
     var pasados = lista.filter(function (c) { return c.fecha && c.fecha < hoyIso; }).sort(function (a, b) { return b.fecha.localeCompare(a.fecha); });
-    if (!lista.length) {
+    var chipsProd = "";
+    if (conProd) {
+      var opciones = data.productoras.filter(function (p) { return usadas[p.id]; }).sort(function (a, b) { return a.nombre.localeCompare(b.nombre, "es"); })
+        .map(function (p) { return [p.id, p.nombre]; });
+      if (usadas.__sin) opciones.push(["__sin", "Sin productora"]);
+      chipsProd = '<div class="chips prod-chips" role="group" aria-label="Filtrar por productora">' +
+        [["", "Todas"]].concat(opciones).map(function (o) {
+          return '<button type="button" class="chip" data-cartel-prod="' + esc(o[0]) + '" aria-pressed="' + (ui.cartelProd === o[0]) + '">' + esc(o[1]) + "</button>";
+        }).join("") + "</div>";
+    }
+    if (!data.cartelera.length) {
       return '<div class="empty"><strong>Todavía no agregaste eventos</strong>Tocá <b>Agregar evento</b> y pegá el link de Bombo. Armo la tarjeta con el flyer, la fecha y los precios de la entrada general y VIP.</div>';
     }
-    var h = '<div class="cartel-list">' + proximos.map(cartelCard).join("") + "</div>";
+    var h = chipsProd + '<div class="cartel-list">' + proximos.map(cartelCard).join("") + "</div>";
+    if (!lista.length) h = chipsProd + '<div class="empty">No hay eventos de esa productora.</div>';
     if (pasados.length) h += '<div class="section-h"><h2>Ya pasaron</h2></div><div class="cartel-list pasados">' + pasados.map(cartelCard).join("") + "</div>";
     return h;
   }
@@ -887,10 +910,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   function cartelCard(c) {
     var id = esc(c.id);
+    var pr = prod(c.productoraId);
     return '<article class="cartel">' +
-      '<div class="cartel-top">' +
+      '<div class="cartel-top" data-cartel-editar="' + id + '">' +
       (c.flyer ? '<img class="cartel-flyer" src="' + esc(c.flyer) + '" alt="Flyer de ' + esc(c.nombre) + '" loading="lazy">' : '<div class="cartel-flyer vacio">Sin flyer</div>') +
-      '<div class="cartel-info"><div class="cartel-fecha">' + esc(fechaLarga(c.fecha, c.hora)) + "</div>" +
+      '<div class="cartel-info">' + (pr ? '<div class="prod-name">' + esc(pr.nombre) + "</div>" : "") +
+      '<div class="cartel-fecha">' + esc(fechaLarga(c.fecha, c.hora)) + "</div>" +
       "<h3>" + esc(c.nombre) + "</h3>" +
       '<div class="precios">' + precioFila("General", c.general) + precioFila("VIP", c.vip) +
       (!c.general && !c.vip ? '<div class="hint">Sin precios cargados</div>' : "") + "</div></div></div>" +
@@ -915,8 +940,11 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   function pintarCartelSheet(error) {
     var st = cartelSheet, d = st.datos;
     var linkVal = (document.getElementById("c-link") || {}).value || (d && d.link) || "";
+    var selProd = document.getElementById("c-prod");
+    var prodVal = selProd ? selProd.value : (d && d.productoraId) || "";
+    var editando = !!(d && d.id);
     var h = '<div class="scrim" data-action="close-bg"><form class="sheet" id="cartel-form" role="dialog" aria-modal="true" aria-labelledby="c-title" novalidate>' +
-      '<div class="sheet-h"><h2 id="c-title">Agregar evento</h2><button type="button" class="x" data-action="close" aria-label="Cerrar">✕</button></div>' +
+      '<div class="sheet-h"><h2 id="c-title">' + (editando ? "Editar evento" : "Agregar evento") + '</h2><button type="button" class="x" data-action="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="field"><label for="c-link">Link de Bombo</label><div class="link-row">' +
       '<input id="c-link" class="input" type="url" inputmode="url" autocomplete="off" autocapitalize="off" placeholder="https://wearebombo.com/evento/…" value="' + esc(linkVal) + '">' +
       '<button type="button" class="btn ghost sm" data-action="c-pegar">Pegar</button></div></div>';
@@ -936,6 +964,11 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         '<div class="grid2"><div class="field"><label for="c-gen">Entrada general</label><div class="money"><span>$</span><input id="c-gen" class="input miles num" type="text" inputmode="numeric" placeholder="0" value="' + (g && g.precio ? intf.format(g.precio) : "") + '"></div></div>' +
         '<div class="field"><label for="c-vip">Entrada VIP</label><div class="money"><span>$</span><input id="c-vip" class="input miles num" type="text" inputmode="numeric" placeholder="0" value="' + (v && v.precio ? intf.format(v.precio) : "") + '"></div></div></div>';
     }
+    h += '<div class="field"><label for="c-prod">Productora</label><select id="c-prod" class="input">' +
+      '<option value="">Sin productora</option>' +
+      data.productoras.slice().sort(function (a, b) { return a.nombre.localeCompare(b.nombre, "es"); }).map(function (p) {
+        return '<option value="' + esc(p.id) + '"' + (prodVal === p.id ? " selected" : "") + ">" + esc(p.nombre) + "</option>";
+      }).join("") + "</select></div>";
     h += '<div class="err" id="c-err"></div><div class="actions">';
     if (st.fase === "link" || st.fase === "buscando") {
       h += '<button class="btn" type="submit"' + (st.fase === "buscando" ? " disabled" : "") + ">Buscar evento</button>" +
@@ -951,16 +984,17 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   function buscarCartel() {
     var link = extraerLink(document.getElementById("c-link").value);
     if (!linkValido(link)) { pintarCartelSheet(ERRORES_LECTOR.link); return; }
-    if (!LECTOR_URL) { cartelSheet = { fase: "manual", datos: { link: link } }; pintarCartelSheet(ERRORES_LECTOR["sin-lector"]); return; }
-    cartelSheet = { fase: "buscando", datos: { link: link } };
+    if (!LECTOR_URL) { cartelSheet = { fase: "manual", datos: Object.assign({}, cartelSheet.datos || {}, { link: link }) }; pintarCartelSheet(ERRORES_LECTOR["sin-lector"]); return; }
+    var previo = cartelSheet.datos || {};
+    cartelSheet = { fase: "buscando", datos: Object.assign({}, previo, { link: link }) };
     pintarCartelSheet();
     consultarLector(link).then(function (j) {
       if (!document.getElementById("cartel-form")) return;
-      cartelSheet = { fase: "listo", datos: datosDeLector(j, link) };
+      cartelSheet = { fase: "listo", datos: Object.assign({ id: previo.id, productoraId: previo.productoraId }, datosDeLector(j, link)) };
       pintarCartelSheet();
     }, function (e) {
       if (!document.getElementById("cartel-form")) return;
-      cartelSheet = { fase: "link", datos: { link: link } };
+      cartelSheet = { fase: "link", datos: Object.assign({}, previo, { link: link }) };
       pintarCartelSheet(ERRORES_LECTOR[e.code] || ERRORES_LECTOR.red);
     });
   }
@@ -983,9 +1017,11 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         actualizado: new Date().toISOString()
       });
     } else {
-      item = d;
+      item = Object.assign({}, d);
     }
-    var existente = item.link ? data.cartelera.find(function (c) { return c.link === item.link || (item.url && c.url === item.url); }) : null;
+    item.productoraId = document.getElementById("c-prod").value || null;
+    var existente = d.id ? data.cartelera.find(function (c) { return c.id === d.id; })
+      : item.link ? data.cartelera.find(function (c) { return c.link === item.link || (item.url && c.url === item.url); }) : null;
     var antes = data.cartelera.slice();
     if (existente) Object.assign(existente, item, { id: existente.id });
     else data.cartelera.push(Object.assign({ id: nuevoId() }, item));
@@ -1032,10 +1068,17 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     toast("Evento eliminado");
   }
 
+  function editarCartel(id) {
+    var c = data.cartelera.find(function (x) { return x.id === id; });
+    if (!c) return;
+    cartelSheet = { fase: "manual", datos: JSON.parse(JSON.stringify(c)) };
+    pintarCartelSheet();
+  }
+
   function pasarAMisEventos(id) {
     var c = data.cartelera.find(function (x) { return x.id === id; });
     if (!c) return;
-    openSheet(null, false, { nombre: c.nombre, fecha: c.fecha });
+    openSheet(null, false, { nombre: c.nombre, fecha: c.fecha, productoraId: c.productoraId || null });
   }
 
   // ---------- Mis productoras (Ajustes) ----------
@@ -1479,9 +1522,11 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   // ---------- events ----------
   document.addEventListener("click", function (e) {
-    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-pct],[data-pe],[data-toggle],[data-facturar],[data-prod-edit],[data-panel],[data-rango],[data-cartel-copiar],[data-cartel-actualizar],[data-cartel-venta],[data-cartel-borrar],[data-action]");
+    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-pct],[data-pe],[data-toggle],[data-facturar],[data-prod-edit],[data-panel],[data-rango],[data-cartel-copiar],[data-cartel-actualizar],[data-cartel-venta],[data-cartel-borrar],[data-cartel-prod],[data-cartel-editar],[data-action]");
     if (!t) return;
     if (t.hasAttribute("data-facturar")) { marcarFacturada(t.getAttribute("data-facturar")); return; }
+    if (t.hasAttribute("data-cartel-prod")) { ui.cartelProd = t.getAttribute("data-cartel-prod"); render(); return; }
+    if (t.hasAttribute("data-cartel-editar")) { editarCartel(t.getAttribute("data-cartel-editar")); return; }
     if (t.hasAttribute("data-cartel-copiar")) { copiarLink(t.getAttribute("data-cartel-copiar")); return; }
     if (t.hasAttribute("data-cartel-actualizar")) { actualizarCartel(t.getAttribute("data-cartel-actualizar")); return; }
     if (t.hasAttribute("data-cartel-venta")) { pasarAMisEventos(t.getAttribute("data-cartel-venta")); return; }
