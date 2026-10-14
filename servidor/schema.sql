@@ -19,3 +19,7 @@ CREATE TABLE IF NOT EXISTS eventos (
   data TEXT NOT NULL,            -- JSON con la lista de eventos del RRPP
   actualizado TEXT NOT NULL
 );
+
+-- v2: redes del RRPP para la página pública
+ALTER TABLE users ADD COLUMN instagram TEXT;
+ALTER TABLE users ADD COLUMN whatsapp TEXT;

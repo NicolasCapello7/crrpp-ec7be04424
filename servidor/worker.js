@@ -11,10 +11,18 @@ const MESES = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "O
 const DIAS = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
 
 // ---------- helpers ----------
+const SEGURIDAD = {
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+  "X-Frame-Options": "DENY",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()"
+};
+const MAX_CUERPO = 512 * 1024; // requests larger than this are rejected
 function corsHeaders(env, extra) {
-  return Object.assign({
+  return Object.assign({}, SEGURIDAD, {
     "Access-Control-Allow-Origin": env.APP_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Vary": "Origin"
   }, extra || {});
@@ -122,10 +130,37 @@ async function verificarGoogle(credencial, clientId) {
 async function usuarioDe(req, env) {
   const m = (req.headers.get("Authorization") || "").match(/^Bearer ([a-f0-9]{64})$/);
   if (!m) return null;
-  return env.DB.prepare("SELECT u.sub, u.email, u.nombre, u.slug FROM sessions s JOIN users u ON u.sub = s.sub WHERE s.token_hash = ? AND s.expira > ?")
+  return env.DB.prepare("SELECT u.sub, u.email, u.nombre, u.slug, u.instagram, u.whatsapp FROM sessions s JOIN users u ON u.sub = s.sub WHERE s.token_hash = ? AND s.expira > ?")
     .bind(await sha256(m[1]), Date.now()).first();
 }
-function usuarioPublico(u) { return { email: u.email, nombre: u.nombre || "", slug: u.slug || "" }; }
+function usuarioPublico(u) { return { email: u.email, nombre: u.nombre || "", slug: u.slug || "", instagram: u.instagram || "", whatsapp: u.whatsapp || "" }; }
+// "@nico.rrpp", "instagram.com/nico.rrpp/" -> "nico.rrpp"; null if it isn't a valid handle, "" if empty
+function limpiarInstagram(t) {
+  t = String(t || "").trim();
+  if (!t) return "";
+  const m = t.match(/instagram\.com\/([^/?#\s]+)/i);
+  if (m) t = m[1];
+  t = t.replace(/^@+/, "");
+  return /^[A-Za-z0-9._]{1,30}$/.test(t) ? t : null;
+}
+// Argentine numbers like "11 2345-6789" or "+54 9 11 2345 6789" -> "5491123456789"; null if invalid, "" if empty
+function limpiarWhatsapp(t) {
+  let d = String(t || "").replace(/\D/g, "");
+  if (!d) return "";
+  d = d.replace(/^00/, "");
+  if (d.startsWith("54")) { if (d.length === 12) d = "549" + d.slice(2); }
+  else { d = d.replace(/^0/, ""); if (d.length === 10) d = "549" + d; }
+  return d.length >= 11 && d.length <= 15 ? d : null;
+}
+async function slugLibre(env, sub, base) {
+  const ocupado = async s => RESERVADOS.has(s) || !!(await env.DB.prepare("SELECT 1 FROM users WHERE slug = ? AND sub != ?").bind(s, sub).first());
+  if (!(await ocupado(base))) return base;
+  // same public name as another RRPP: add a short code that is always the same for this account
+  const corto = base.slice(0, 30).replace(/-+$/g, "");
+  let slug = corto + "-" + (await sha256(sub)).slice(0, 4);
+  for (let i = 0; i < 5 && (await ocupado(slug)); i++) slug = corto + "-" + tokenNuevo().slice(0, 5);
+  return slug;
+}
 
 // ---------- event lists ----------
 function precioLimpio(p) {
@@ -244,7 +279,16 @@ const SCRIPT_FILTROS = `<script>
   document.getElementById("f-limpiar").addEventListener("click", function () { fF.value = ""; if (fP) fP.value = ""; aplicar(); });
 })();
 </script>`;
-function paginaHTML(lista, slug) {
+const ICONO_IG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.4" cy="6.6" r="1.1" class="lleno"/></svg>';
+const ICONO_WA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 11.8a8.6 8.6 0 0 1-12.8 7.5L3.5 20.5l1.2-4.1A8.6 8.6 0 1 1 20.5 11.8z"/><path class="lleno" d="M9.1 7.6c-.3 0-.7.1-1 .5-.3.4-.9 1-.9 2.3 0 1.4 1 2.7 1.1 2.9.2.2 2 3 4.8 4.1 2.3.9 2.8.7 3.3.7.5-.1 1.6-.7 1.9-1.3.2-.6.2-1.2.2-1.3-.1-.1-.3-.2-.6-.3l-2.1-1c-.3-.1-.5-.2-.7.1l-.9 1.1c-.2.2-.3.2-.6.1-.3-.1-1.2-.5-2.3-1.4-.8-.8-1.4-1.7-1.6-2-.2-.3 0-.4.1-.6l.5-.6.3-.5c.1-.2 0-.4 0-.5l-1-2.3c-.2-.6-.5-.5-.7-.5z"/></svg>';
+function redesHTML(u) {
+  if (!u || (!u.instagram && !u.whatsapp)) return "";
+  return '<div class="redes">' +
+    (u.instagram ? '<a class="red" href="https://instagram.com/' + esc(u.instagram) + '" target="_blank" rel="noopener">' + ICONO_IG + "<span>@" + esc(u.instagram) + "</span></a>" : "") +
+    (u.whatsapp ? '<a class="red" href="https://wa.me/' + esc(u.whatsapp) + '?text=' + encodeURIComponent("Hola! Vi tus eventos y quiero entradas") + '" target="_blank" rel="noopener">' + ICONO_WA + "<span>WhatsApp</span></a>" : "") +
+    "</div>";
+}
+function paginaHTML(lista, u, nonce) {
   const primero = lista.find(c => c.flyer);
   const tarjetas = lista.map(c => {
     const agotado = (!c.general || c.general.agotado) && (!c.vip || c.vip.agotado) && (c.general || c.vip);
@@ -284,6 +328,10 @@ h2 { margin: 0; font-size: 19px; line-height: 1.25; overflow-wrap: anywhere; }
 .precio b { font-variant-numeric: tabular-nums; white-space: nowrap; } .precio.agotado b { color: var(--danger); }
 .comprar { margin-top: 10px; display: block; text-align: center; text-decoration: none; background: var(--accent); color: var(--ink); font-weight: 700; font-size: 16px; padding: 14px; border-radius: 12px; }
 .comprar.off { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+.redes { display: flex; gap: 10px; flex-wrap: wrap; margin-top: -4px; }
+.red { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px 8px 10px; font-weight: 600; font-size: 14px; }
+.red svg { width: 22px; height: 22px; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; }
+.red svg .lleno { fill: var(--accent); stroke: none; }
 .filtros { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
 .filtros summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-weight: 600; }
 .filtros summary::-webkit-details-marker { display: none; }
@@ -298,8 +346,9 @@ h2 { margin: 0; font-size: 19px; line-height: 1.25; overflow-wrap: anywhere; }
 </style></head>
 <body><main>
 <h1>Próximos <span>eventos</span></h1>
+${redesHTML(u)}
 ${tarjetas ? filtrosHTML(lista) + tarjetas : '<div class="vacio">No hay eventos publicados por ahora.</div>'}
-</main>${tarjetas ? SCRIPT_FILTROS : ""}</body></html>`;
+</main>${tarjetas ? SCRIPT_FILTROS.replace("<script>", '<script nonce="' + nonce + '">') : ""}</body></html>`;
 }
 function pagina404() {
   return new Response('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>No encontrado</title>' +
@@ -314,9 +363,12 @@ export default {
     const url = new URL(req.url);
     const ruta = url.pathname;
     if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders(env) });
+    if (Number(req.headers.get("Content-Length") || 0) > MAX_CUERPO) return json(env, { ok: false, error: "grande" }, 413);
 
     try {
       if (ruta === "/lector" && req.method === "GET") {
+        // only the app may use the reader (keeps it from being used as a public proxy)
+        if (req.headers.get("Origin") !== env.APP_ORIGIN) return json(env, { ok: false, error: "origen" }, 403);
         const link = url.searchParams.get("url") || "";
         if (!linkBombo(link)) return json(env, { ok: false, error: "link" }, 400);
         try { return json(env, Object.assign({ ok: true }, await leerLink(link))); }
@@ -332,7 +384,7 @@ export default {
           .bind(g.sub, g.email, null, new Date().toISOString()).run();
         const token = tokenNuevo();
         await env.DB.prepare("INSERT INTO sessions (token_hash, sub, expira) VALUES (?, ?, ?)").bind(await sha256(token), g.sub, Date.now() + SESION_MS).run();
-        const u = await env.DB.prepare("SELECT sub, email, nombre, slug FROM users WHERE sub = ?").bind(g.sub).first();
+        const u = await env.DB.prepare("SELECT sub, email, nombre, slug, instagram, whatsapp FROM users WHERE sub = ?").bind(g.sub).first();
         return json(env, { ok: true, token, usuario: usuarioPublico(u), sugerido: slugDe(g.name || g.email.split("@")[0]) });
       }
 
@@ -345,14 +397,18 @@ export default {
         }
         if (ruta === "/api/perfil" && req.method === "PUT") {
           const cuerpo = await req.json().catch(() => ({}));
-          const slug = slugDe(cuerpo.slug || cuerpo.nombre);
           const nombre = String(cuerpo.nombre || "").trim().slice(0, 60);
-          if (slug.length < 3) return json(env, { ok: false, error: "slug-corto" }, 400);
-          if (RESERVADOS.has(slug)) return json(env, { ok: false, error: "slug-ocupado" }, 409);
-          const otro = await env.DB.prepare("SELECT sub FROM users WHERE slug = ? AND sub != ?").bind(slug, u.sub).first();
-          if (otro) return json(env, { ok: false, error: "slug-ocupado" }, 409);
-          await env.DB.prepare("UPDATE users SET nombre = ?, slug = ? WHERE sub = ?").bind(nombre || null, slug, u.sub).run();
-          return json(env, { ok: true, usuario: { email: u.email, nombre, slug } });
+          const base = slugDe(nombre);
+          if (base.length < 3) return json(env, { ok: false, error: "slug-corto" }, 400);
+          const instagram = limpiarInstagram(cuerpo.instagram);
+          if (instagram === null) return json(env, { ok: false, error: "instagram" }, 400);
+          const whatsapp = limpiarWhatsapp(cuerpo.whatsapp);
+          if (whatsapp === null) return json(env, { ok: false, error: "whatsapp" }, 400);
+          // keep the current link if the name didn't change; otherwise find a free one
+          const slug = u.slug && slugDe(u.nombre) === base ? u.slug : await slugLibre(env, u.sub, base);
+          await env.DB.prepare("UPDATE users SET nombre = ?, slug = ?, instagram = ?, whatsapp = ? WHERE sub = ?")
+            .bind(nombre, slug, instagram || null, whatsapp || null, u.sub).run();
+          return json(env, { ok: true, usuario: { email: u.email, nombre, slug, instagram, whatsapp } });
         }
         if (ruta === "/api/eventos" && req.method === "PUT") {
           const cuerpo = await req.json().catch(() => ({}));
@@ -367,6 +423,15 @@ export default {
           await guardarLista(env, u.sub, lista);
           return json(env, { ok: true, cantidad: lista.length });
         }
+        if (ruta === "/api/cuenta" && req.method === "DELETE") {
+          // the RRPP deletes everything stored about them: events, sessions and account
+          await env.DB.batch([
+            env.DB.prepare("DELETE FROM eventos WHERE sub = ?").bind(u.sub),
+            env.DB.prepare("DELETE FROM sessions WHERE sub = ?").bind(u.sub),
+            env.DB.prepare("DELETE FROM users WHERE sub = ?").bind(u.sub)
+          ]);
+          return json(env, { ok: true });
+        }
         if (ruta === "/api/logout" && req.method === "POST") {
           const m = (req.headers.get("Authorization") || "").match(/^Bearer ([a-f0-9]{64})$/);
           if (m) await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256(m[1])).run();
@@ -375,16 +440,20 @@ export default {
         return json(env, { ok: false, error: "ruta" }, 404);
       }
 
-      const m = ruta.match(/^\/([a-z0-9-]{3,30})\/?$/);
+      const m = ruta.match(/^\/([a-z0-9-]{3,40})\/?$/);
       if (m && req.method === "GET" && !RESERVADOS.has(m[1])) {
-        const u = await env.DB.prepare("SELECT sub FROM users WHERE slug = ?").bind(m[1]).first();
+        const u = await env.DB.prepare("SELECT sub, instagram, whatsapp FROM users WHERE slug = ?").bind(m[1]).first();
         if (!u) return pagina404();
         const hoy = hoyAR();
         const lista = (await leerLista(env, u.sub))
           .filter(c => !c.fecha || c.fecha >= hoy)
           .sort((a, b) => (a.fecha || "9999").localeCompare(b.fecha || "9999"));
         if (lista.some(c => c.link && (!c.actualizado || Date.now() - Date.parse(c.actualizado) > VIEJO_MS))) ctx.waitUntil(refrescar(env, u.sub));
-        return new Response(paginaHTML(lista, m[1]), { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+        const nonce = tokenNuevo().slice(0, 24);
+        return new Response(paginaHTML(lista, u, nonce), { headers: Object.assign({}, SEGURIDAD, {
+          "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store",
+          "Content-Security-Policy": "default-src 'none'; img-src https://files.wearebombo.com https://storage.googleapis.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'nonce-" + nonce + "'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        }) });
       }
       if (ruta === "/robots.txt") return new Response("User-agent: *\nDisallow: /api/\n", { headers: { "Content-Type": "text/plain" } });
       return pagina404();
