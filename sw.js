@@ -1,6 +1,6 @@
 // Offline support: the app shell is cached; same-origin requests go network-first so updates arrive,
 // Google Fonts and Bombo flyers are cache-first (flyers live in their own cache that survives updates).
-var CACHE = "comisiones-v25";
+var CACHE = "comisiones-v26";
 var FLYERS = "comisiones-flyers";
 var SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 

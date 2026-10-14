@@ -126,6 +126,10 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .cartel-acc .btn.sm { flex: 1 1 0; min-width: 0; white-space: nowrap; padding: 8px 6px; font-size: 13.5px; }
 .cartel-acc .icon-btn.sq { width: 38px; height: 38px; border-radius: 10px; background: var(--surface-2); border: 0; }
 .cartel-acc .borrar { color: var(--danger); }
+.cartel-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px; border-top: 1px dashed var(--line); background: var(--surface-2); font-size: 14px; font-weight: 600; }
+.cartel-confirm span { flex: 1 1 100%; }
+.cartel-confirm .btn { flex: 1 1 0; min-height: 40px; }
+.btn.peligro { background: var(--danger); color: #fff; }
 .cartel-acc a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; min-height: 38px; box-sizing: border-box; }
 .link-row { display: flex; gap: 8px; }
 .link-row .input { flex: 1; min-width: 0; }
@@ -351,7 +355,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 25;
+  var VERSION = 26;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
@@ -925,10 +929,14 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       '<div class="cartel-acc">' +
       (c.link ? '<a class="btn ghost sm ir" href="' + esc(c.url || c.link) + '" target="_blank" rel="noopener">Ir al evento</a>' : "") +
       (c.link && LECTOR_URL ? '<button type="button" class="icon-btn sq" data-cartel-actualizar="' + id + '" aria-label="Actualizar precios">' + ICONO_ACTUALIZAR + "</button>" : "") +
+      '<button type="button" class="icon-btn sq borrar" data-cartel-borrar="' + id + '" aria-label="Eliminar evento">' + ICONO_BORRAR + "</button>" +
+      "</div>" +
       (ui.cartelBorrar === c.id
-        ? '<button type="button" class="btn ghost sm borrar" data-cartel-borrar="' + id + '">¿Eliminar?</button>'
-        : '<button type="button" class="icon-btn sq borrar" data-cartel-borrar="' + id + '" aria-label="Eliminar evento">' + ICONO_BORRAR + "</button>") +
-      "</div></article>";
+        ? '<div class="cartel-confirm"><span>¿Eliminar este evento?</span>' +
+          '<button type="button" class="btn sm peligro" data-cartel-borrar-ok="' + id + '">Eliminar</button>' +
+          '<button type="button" class="btn ghost sm" data-action="cartel-borrar-no">Cancelar</button></div>'
+        : "") +
+      "</article>";
   }
 
   var ICONO_ACTUALIZAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>';
@@ -1108,13 +1116,6 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
 
   function borrarCartel(id) {
-    if (ui.cartelBorrar !== id) {
-      ui.cartelBorrar = id;
-      render();
-      clearTimeout(borrarCartel.t);
-      borrarCartel.t = setTimeout(function () { if (ui.cartelBorrar === id) { ui.cartelBorrar = null; if (ui.view === "cartelera") render(); } }, 4000);
-      return;
-    }
     var antes = data.cartelera;
     data.cartelera = data.cartelera.filter(function (c) { return c.id !== id; });
     if (!persist()) { data.cartelera = antes; return; }
@@ -1572,13 +1573,14 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   // ---------- events ----------
   document.addEventListener("click", function (e) {
-    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-pct],[data-pe],[data-toggle],[data-facturar],[data-prod-edit],[data-panel],[data-rango],[data-cartel-actualizar],[data-cartel-borrar],[data-cartel-prod],[data-cartel-editar],[data-action]");
+    var t = e.target.closest("[data-view],[data-filtro],[data-rank],[data-edit],[data-pct],[data-pe],[data-toggle],[data-facturar],[data-prod-edit],[data-panel],[data-rango],[data-cartel-actualizar],[data-cartel-borrar-ok],[data-cartel-borrar],[data-cartel-prod],[data-cartel-editar],[data-action]");
     if (!t) return;
     if (t.hasAttribute("data-facturar")) { marcarFacturada(t.getAttribute("data-facturar")); return; }
     if (t.hasAttribute("data-cartel-prod")) { ui.cartelProd = t.getAttribute("data-cartel-prod"); render(); return; }
     if (t.hasAttribute("data-cartel-editar")) { editarCartel(t.getAttribute("data-cartel-editar")); return; }
     if (t.hasAttribute("data-cartel-actualizar")) { actualizarCartel(t.getAttribute("data-cartel-actualizar")); return; }
-    if (t.hasAttribute("data-cartel-borrar")) { borrarCartel(t.getAttribute("data-cartel-borrar")); return; }
+    if (t.hasAttribute("data-cartel-borrar")) { var bid = t.getAttribute("data-cartel-borrar"); ui.cartelBorrar = ui.cartelBorrar === bid ? null : bid; render(); return; }
+    if (t.hasAttribute("data-cartel-borrar-ok")) { borrarCartel(t.getAttribute("data-cartel-borrar-ok")); return; }
     if (t.hasAttribute("data-panel")) {
       if (t.getAttribute("data-panel") === "ev") ui.panelEv = !ui.panelEv; else ui.panelRend = !ui.panelRend;
       render();
@@ -1639,6 +1641,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     else if (a === "export-csv") exportCsv();
     else if (a === "import-confirm") confirmarImport();
     else if (a === "import-cancel") { ui.pendingImport = null; render(); }
+    else if (a === "cartel-borrar-no") { ui.cartelBorrar = null; render(); }
     else if (a === "pct-cancel") { ui.editPct = null; render(); curarLuego(); }
     else if (a === "prod-cancel") { ui.editProd = null; ui.prodBorrar = false; render(); curarLuego(); }
     else if (a === "prod-delete") borrarProductora();
