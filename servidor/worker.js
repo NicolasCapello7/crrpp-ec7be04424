@@ -6,6 +6,7 @@ const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/6
 const RESERVADOS = new Set(["api", "lector", "favicon.ico", "robots.txt", "admin", "www", "app", "login"]);
 const VIEJO_MS = 15 * 60 * 1000;          // public page refreshes prices older than this
 const SESION_MS = 180 * 24 * 3600 * 1000; // app sessions last 6 months
+const MESES_LARGO = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const MESES = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
 const DIAS = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
 
@@ -143,6 +144,7 @@ function limpiarEventos(lista) {
     flyer: imagenBombo(c.flyer) ? String(c.flyer).slice(0, 600) : "",
     lugar: String(c.lugar || "").slice(0, 200),
     productoraId: c.productoraId ? String(c.productoraId).slice(0, 40) : null,
+    productoraNombre: String(c.productoraNombre || "").trim().slice(0, 80),
     general: precioLimpio(c.general),
     vip: precioLimpio(c.vip),
     actualizado: String(c.actualizado || "").slice(0, 40)
@@ -195,11 +197,58 @@ function filaPrecio(tipo, p) {
   return '<div class="precio' + (p.agotado ? " agotado" : "") + '"><span>' + tipo + (p.nombre ? " <small>" + esc(p.nombre) + "</small>" : "") +
     "</span><b>" + (p.agotado ? "Agotado" : esc(money.format(p.precio))) + "</b></div>";
 }
+function filtrosHTML(lista) {
+  if (lista.length < 2) return "";
+  const meses = [...new Set(lista.map(c => (c.fecha || "").slice(0, 7)).filter(Boolean))].sort();
+  const prods = [...new Map(lista.filter(c => c.productoraNombre).map(c => [c.productoraNombre.toLowerCase(), c.productoraNombre])).entries()]
+    .sort((a, b) => a[1].localeCompare(b[1], "es"));
+  const opcMes = meses.map(m => '<option value="mes:' + m + '">' + MESES_LARGO[+m.slice(5, 7) - 1] + " " + m.slice(0, 4) + "</option>").join("");
+  return '<details class="filtros"><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M6.5 12h11M10 18h4"/></svg>Filtrar<span id="f-activo"></span></summary>' +
+    '<div class="filtros-box">' +
+    '<label>Fecha<select id="f-fecha"><option value="">Todas las fechas</option><option value="finde">Este fin de semana</option><option value="7d">Próximos 7 días</option>' + opcMes + "</select></label>" +
+    (prods.length ? '<label>Productora<select id="f-prod"><option value="">Todas las productoras</option>' +
+      prods.map(p => '<option value="' + esc(p[0]) + '">' + esc(p[1]) + "</option>").join("") + "</select></label>" : "") +
+    '<button type="button" id="f-limpiar">Quitar filtros</button></div></details>' +
+    '<div class="vacio" id="f-vacio" hidden>No hay eventos con ese filtro.</div>';
+}
+const SCRIPT_FILTROS = `<script>
+(function () {
+  var fF = document.getElementById("f-fecha"), fP = document.getElementById("f-prod"), act = document.getElementById("f-activo");
+  if (!fF) return;
+  function iso(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function rango(v) {
+    var h = new Date(); h.setHours(0, 0, 0, 0);
+    if (v === "7d") { var f = new Date(h); f.setDate(f.getDate() + 7); return [iso(h), iso(f)]; }
+    if (v === "finde") {
+      var dia = h.getDay(); // 0 domingo … 6 sábado
+      var vie = new Date(h); vie.setDate(h.getDate() + (dia === 0 ? -2 : dia === 6 ? -1 : 5 - dia));
+      var lun = new Date(vie); lun.setDate(vie.getDate() + 3); // events after midnight on Sunday still count
+      return [iso(vie), iso(lun)];
+    }
+    if (v.indexOf("mes:") === 0) { var m = v.slice(4); return [m + "-01", m + "-31"]; }
+    return null;
+  }
+  function aplicar() {
+    var r = rango(fF.value), p = fP ? fP.value : "", n = 0;
+    document.querySelectorAll(".ev").forEach(function (ev) {
+      var f = ev.getAttribute("data-fecha");
+      var ok = (!r || (f >= r[0] && f <= r[1])) && (!p || ev.getAttribute("data-prod") === p);
+      ev.hidden = !ok; if (ok) n++;
+    });
+    document.getElementById("f-vacio").hidden = n > 0;
+    var cuantos = (fF.value ? 1 : 0) + (p ? 1 : 0);
+    act.textContent = cuantos ? " · " + cuantos + (cuantos === 1 ? " filtro" : " filtros") : "";
+  }
+  fF.addEventListener("change", aplicar);
+  if (fP) fP.addEventListener("change", aplicar);
+  document.getElementById("f-limpiar").addEventListener("click", function () { fF.value = ""; if (fP) fP.value = ""; aplicar(); });
+})();
+</script>`;
 function paginaHTML(lista, slug) {
   const primero = lista.find(c => c.flyer);
   const tarjetas = lista.map(c => {
     const agotado = (!c.general || c.general.agotado) && (!c.vip || c.vip.agotado) && (c.general || c.vip);
-    return '<article class="ev">' +
+    return '<article class="ev" data-fecha="' + esc(c.fecha) + '" data-prod="' + esc((c.productoraNombre || "").toLowerCase()) + '">' +
       (c.flyer ? '<img src="' + esc(c.flyer) + '" alt="Flyer de ' + esc(c.nombre) + '" loading="lazy">' : "") +
       '<div class="info"><div class="fecha">' + esc(fechaLarga(c.fecha, c.hora)) + "</div><h2>" + esc(c.nombre) + "</h2>" +
       '<div class="precios">' + filaPrecio("General", c.general) + filaPrecio("VIP", c.vip) + "</div>" +
@@ -235,12 +284,22 @@ h2 { margin: 0; font-size: 19px; line-height: 1.25; overflow-wrap: anywhere; }
 .precio b { font-variant-numeric: tabular-nums; white-space: nowrap; } .precio.agotado b { color: var(--danger); }
 .comprar { margin-top: 10px; display: block; text-align: center; text-decoration: none; background: var(--accent); color: var(--ink); font-weight: 700; font-size: 16px; padding: 14px; border-radius: 12px; }
 .comprar.off { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+.filtros { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.filtros summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-weight: 600; }
+.filtros summary::-webkit-details-marker { display: none; }
+.filtros summary svg { width: 20px; height: 20px; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; }
+.filtros summary span { color: var(--accent); }
+.filtros-box { display: flex; flex-direction: column; gap: 12px; padding: 0 14px 14px; }
+.filtros label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.filtros select { -webkit-appearance: none; appearance: none; width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font: inherit; font-size: 16px; }
+#f-limpiar { align-self: flex-start; background: none; border: 0; color: var(--accent); font: inherit; font-weight: 600; padding: 4px 0; cursor: pointer; }
+.ev[hidden], .vacio[hidden] { display: none; }
 .vacio { color: var(--muted); text-align: center; padding: 40px 16px; border: 1px dashed var(--line); border-radius: 16px; }
 </style></head>
 <body><main>
 <h1>Próximos <span>eventos</span></h1>
-${tarjetas || '<div class="vacio">No hay eventos publicados por ahora.</div>'}
-</main></body></html>`;
+${tarjetas ? filtrosHTML(lista) + tarjetas : '<div class="vacio">No hay eventos publicados por ahora.</div>'}
+</main>${tarjetas ? SCRIPT_FILTROS : ""}</body></html>`;
 }
 function pagina404() {
   return new Response('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>No encontrado</title>' +

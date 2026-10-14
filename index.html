@@ -367,7 +367,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 32;
+  var VERSION = 33;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
@@ -923,18 +923,26 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (sync.estado === "error") return "Sin conexión: tus cambios se publican cuando vuelvas a tener internet.";
     return "Tu página se actualiza sola cuando agregás, editás o borrás eventos.";
   }
+  // What goes to the public page: the events plus each productora's name (productoras live on the phone)
+  function eventosParaSubir() {
+    return data.cartelera.map(function (c) {
+      var p = prod(c.productoraId);
+      return Object.assign({}, c, { productoraNombre: p ? p.nombre : "" });
+    });
+  }
   function programarSubida() {
     if (!cuenta || !cuenta.sincronizado) return;
-    var foto = JSON.stringify(data.cartelera);
+    var foto = JSON.stringify(eventosParaSubir());
     if (foto === sync.ultimo) return;
     clearTimeout(sync.timer);
     sync.timer = setTimeout(subirEventos, 800);
   }
   function subirEventos() {
     if (!cuenta || !cuenta.sincronizado) return;
-    var foto = JSON.stringify(data.cartelera);
+    var lista = eventosParaSubir();
+    var foto = JSON.stringify(lista);
     sync.estado = "subiendo"; pintarSync();
-    api("/api/eventos", { method: "PUT", body: { eventos: data.cartelera } }).then(function () {
+    api("/api/eventos", { method: "PUT", body: { eventos: lista } }).then(function () {
       sync.ultimo = foto; sync.estado = ""; pintarSync();
     }, function () { sync.estado = "error"; pintarSync(); });
   }
@@ -955,8 +963,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { /* ignore */ }
         subirEventos();
       } else {
-        data.cartelera = j.eventos;
-        sync.ultimo = JSON.stringify(j.eventos);
+        data.cartelera = j.eventos.map(function (c) { var o = Object.assign({}, c); delete o.productoraNombre; return o; });
+        sync.ultimo = JSON.stringify(eventosParaSubir());
         guardarCuenta();
         try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { /* ignore */ }
       }
