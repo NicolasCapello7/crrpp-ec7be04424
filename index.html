@@ -131,6 +131,7 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .c-estado { font-size: 14px; color: var(--muted); }
 .preview-cartel .cartel-flyer { width: 96px; }
 .cartel-top[data-cartel-editar] { cursor: pointer; }
+.auto-estado { font-size: 12px; color: var(--muted); margin-top: -8px; }
 .chips.prod-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; }
 .chips.prod-chips::-webkit-scrollbar { display: none; }
 .chips.prod-chips .chip { flex: 0 0 auto; white-space: nowrap; }
@@ -349,7 +350,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 23;
+  var VERSION = 24;
   var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
@@ -895,7 +896,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (!data.cartelera.length) {
       return '<div class="empty"><strong>Todavía no agregaste eventos</strong>Tocá <b>Agregar evento</b> y pegá el link de Bombo. Armo la tarjeta con el flyer, la fecha y los precios de la entrada general y VIP.</div>';
     }
-    var h = chipsProd + '<div class="cartel-list">' + proximos.map(cartelCard).join("") + "</div>";
+    var h = chipsProd + (LECTOR_URL && data.cartelera.some(function (c) { return c.link; }) ? '<div class="auto-estado" id="auto-estado">' + esc(textoAuto()) + "</div>" : "") +
+      '<div class="cartel-list">' + proximos.map(cartelCard).join("") + "</div>";
     if (!lista.length) h = chipsProd + '<div class="empty">No hay eventos de esa productora.</div>';
     if (pasados.length) h += '<div class="section-h"><h2>Ya pasaron</h2></div><div class="cartel-list pasados">' + pasados.map(cartelCard).join("") + "</div>";
     return h;
@@ -1031,16 +1033,76 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     toast(existente ? "Evento actualizado" : "Evento guardado");
   }
 
+  // ---------- automatic price refresh (every 5 min while Eventos is open) ----------
+  var REFRESCO_MS = 5 * 60 * 1000;
+  var auto = { corriendo: false, ultima: null, error: false };
+  function claveP(p) { return p ? p.nombre + "|" + p.precio + "|" + p.agotado : ""; }
+  function preciosIguales(a, b) { return claveP(a.general) === claveP(b.general) && claveP(a.vip) === claveP(b.vip); }
+  function ultimaActualizacion() {
+    if (auto.ultima) return auto.ultima;
+    var t = 0;
+    data.cartelera.forEach(function (c) { if (c.link && c.actualizado) t = Math.max(t, new Date(c.actualizado).getTime()); });
+    return t ? new Date(t) : null;
+  }
+  function textoAuto() {
+    if (auto.corriendo) return "Actualizando precios de Bombo…";
+    if (auto.error) return "No pude actualizar los precios (¿sin conexión?). Reintento en unos minutos.";
+    var u = ultimaActualizacion();
+    if (!u) return "Los precios se actualizan solos cada 5 minutos.";
+    var min = Math.floor((Date.now() - u.getTime()) / 60000);
+    var hora = String(u.getHours()).padStart(2, "0") + ":" + String(u.getMinutes()).padStart(2, "0");
+    return "Precios de Bombo actualizados a las " + hora + (min < 1 ? " (recién)" : " (hace " + min + " min)") + ". Se actualizan solos cada 5 minutos.";
+  }
+  function pintarAuto() { var el = document.getElementById("auto-estado"); if (el) el.textContent = textoAuto(); }
+
+  function actualizarTodos() {
+    if (auto.corriendo || !LECTOR_URL) return;
+    var hoyIso = hoy();
+    var pend = data.cartelera.filter(function (c) {
+      return c.link && (!c.fecha || c.fecha >= hoyIso) && (!c.actualizado || Date.now() - new Date(c.actualizado).getTime() > REFRESCO_MS - 30000);
+    });
+    if (!pend.length) { pintarAuto(); return; }
+    auto.corriendo = true; auto.error = false;
+    pintarAuto();
+    var cambios = [], fallas = 0, i = 0;
+    function siguiente() {
+      if (i >= pend.length) return Promise.resolve();
+      var c = pend[i++];
+      return consultarLector(c.link).then(function (j) {
+        var nuevo = datosDeLector(j, c.link);
+        if (!preciosIguales(c, nuevo)) cambios.push(c.nombre);
+        Object.assign(c, nuevo);
+      }, function () { fallas++; }).then(siguiente);
+    }
+    Promise.all([siguiente(), siguiente(), siguiente()]).then(function () {
+      auto.corriendo = false;
+      auto.error = fallas === pend.length;
+      if (!auto.error) auto.ultima = new Date();
+      persist();
+      if (ui.view === "cartelera") render(); else pintarAuto();
+      if (cambios.length) toast(cambios.length === 1 ? "Cambió el precio de " + cambios[0] : "Cambiaron los precios de " + cambios.length + " eventos");
+    });
+  }
+  setInterval(function () {
+    if (document.visibilityState !== "visible" || ui.view !== "cartelera") return;
+    actualizarTodos();
+    pintarAuto();
+  }, 60000);
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && ui.view === "cartelera") setTimeout(actualizarTodos, 800);
+  });
+
   function actualizarCartel(id) {
     var c = data.cartelera.find(function (x) { return x.id === id; });
     if (!c || !c.link) return;
     toast("Buscando precios en Bombo…");
     consultarLector(c.link).then(function (j) {
       var nuevo = datosDeLector(j, c.link);
+      var igual = preciosIguales(c, nuevo);
       Object.assign(c, nuevo);
       persist();
       render();
-      toast("Precios actualizados");
+      toast(igual ? "Sin cambios: los precios siguen iguales" : "Precios actualizados");
     }, function (e) { toast(ERRORES_LECTOR[e.code] || ERRORES_LECTOR.red); });
   }
 
@@ -1548,7 +1610,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       var pn = document.getElementById("pe-nombre"); if (pn) pn.closest(".prod-row").scrollIntoView({ block: "nearest", behavior: "smooth" });
       return;
     }
-    if (t.hasAttribute("data-view")) { ui.view = t.getAttribute("data-view"); ui.editPct = null; ui.editProd = null; ui.prodBorrar = false; ui.cartelBorrar = null; render(); document.getElementById("scroller").scrollTop = 0; return; }
+    if (t.hasAttribute("data-view")) { ui.view = t.getAttribute("data-view"); ui.editPct = null; ui.editProd = null; ui.prodBorrar = false; ui.cartelBorrar = null; render(); document.getElementById("scroller").scrollTop = 0; if (ui.view === "cartelera") actualizarTodos(); return; }
     if (t.hasAttribute("data-filtro")) { ui.filtro = t.getAttribute("data-filtro"); render(); return; }
     if (t.hasAttribute("data-rank")) { ui.rankBy = t.getAttribute("data-rank"); render(); return; }
     if (t.hasAttribute("data-edit")) { openSheet(t.getAttribute("data-edit")); return; }
