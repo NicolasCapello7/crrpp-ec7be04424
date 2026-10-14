@@ -3,6 +3,8 @@
 //   /api/…               cuentas con Google, nombre público y lista de eventos de cada RRPP
 //   /<nombre-del-rrpp>   página pública con los próximos eventos de ese RRPP, para sus clientes
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+// Shown when the link is shared (WhatsApp, Instagram…): the app logo, not an event flyer
+const LOGO_URL = "https://nicolascapello7.github.io/crrpp-ec7be04424/icon-512.png";
 const RESERVADOS = new Set(["api", "lector", "favicon.ico", "robots.txt", "admin", "www", "app", "login"]);
 const VIEJO_MS = 15 * 60 * 1000;          // public page refreshes prices older than this
 const SESION_MS = 180 * 24 * 3600 * 1000; // app sessions last 6 months
@@ -289,7 +291,6 @@ function redesHTML(u) {
     "</div>";
 }
 function paginaHTML(lista, u, nonce) {
-  const primero = lista.find(c => c.flyer);
   const tarjetas = lista.map(c => {
     const agotado = (!c.general || c.general.agotado) && (!c.vip || c.vip.agotado) && (c.general || c.vip);
     return '<article class="ev" data-fecha="' + esc(c.fecha) + '" data-prod="' + esc((c.productoraNombre || "").toLowerCase()) + '">' +
@@ -306,7 +307,10 @@ function paginaHTML(lista, u, nonce) {
 <meta name="description" content="${esc(lista.map(c => c.nombre).slice(0, 5).join(" · ") || "Entradas para los próximos eventos")}">
 <meta property="og:title" content="Próximos eventos">
 <meta property="og:description" content="${esc(lista.map(c => c.nombre).slice(0, 5).join(" · ") || "Entradas para los próximos eventos")}">
-${primero ? `<meta property="og:image" content="${esc(primero.flyer)}">` : ""}
+<meta property="og:image" content="${LOGO_URL}">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta name="twitter:card" content="summary">
 <meta name="theme-color" content="#100e15">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700&family=Big+Shoulders+Display:wght@800&display=swap">
