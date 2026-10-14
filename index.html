@@ -319,17 +319,17 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
 <nav class="nav" aria-label="Secciones">
   <div class="nav-inner">
-    <button type="button" data-view="fechas" aria-current="page">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/><path d="M14 5v12" stroke-dasharray="2 2"/></svg>
-      Mis Eventos
-    </button>
-    <button type="button" data-view="cartelera">
+    <button type="button" data-view="cartelera" aria-current="page">
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
       Eventos
     </button>
+    <button type="button" data-view="fechas">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/><path d="M14 5v12" stroke-dasharray="2 2"/></svg>
+      Mi Rendimiento
+    </button>
     <button type="button" data-view="rendimiento">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>
-      Rendimiento
+      Estadísticas
     </button>
     <button type="button" data-view="ajustes">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>
@@ -367,8 +367,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 35;
-  var ui = { view: "fechas", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
+  var VERSION = 36;
+  var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
   var $main = document.getElementById("main");
@@ -559,8 +559,6 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var html = "";
     if (!storageOk) {
       html += '<div class="banner">Este navegador no deja guardar datos (¿modo privado?). Abrí la app desde el ícono de inicio o desde Safari normal.</div>';
-    } else if (data.pct == null && (ui.view === "fechas" || ui.view === "rendimiento")) {
-      html += '<div class="banner"><span>Configurá tu % de comisión para calcular lo que te deben.</span><button type="button" data-view="ajustes">Configurar</button></div>';
     }
     // backup reminder lives in Ajustes; the tab shows a dot when a copy is due
     var tabAjustes = document.querySelector('.nav [data-view="ajustes"]');
@@ -727,7 +725,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       return '<div class="empty"><strong>Sin datos todavía</strong>Cuando cargues tus eventos vas a ver acá cuáles vendieron más, tu precio promedio por entrada y lo que ganaste por mes.</div>';
     }
     var evs = eventosRendimiento();
-    var h = '<div class="section-h"><h2>Rendimiento</h2>' + botonFiltro("rend") + "</div>";
+    var h = '<div class="section-h"><h2>Estadísticas</h2>' + botonFiltro("rend") + "</div>";
     h += ui.panelRend ? panelFiltro("rend") : resumenFiltro("rend");
     if (!evs.length) return h + '<div class="empty">No hay eventos en ese período.</div>';
     var t = totales(evs);
@@ -2012,7 +2010,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   sumarProductorasFaltantes();
   leerCuenta();
   render();
-  traerCuenta();
+  traerCuenta().then(function () { if (ui.view === "cartelera") actualizarTodos(); });
   if (navigator.storage && navigator.storage.persist) { navigator.storage.persist().catch(function () {}); }
   if ("serviceWorker" in navigator) {
     // Check for a new version on every open; reload once when it takes over (data is untouched)
