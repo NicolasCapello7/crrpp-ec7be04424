@@ -1,6 +1,6 @@
 // Offline support: the app shell is cached; same-origin requests go network-first so updates arrive,
 // Google Fonts and Bombo flyers are cache-first (flyers live in their own cache that survives updates).
-var CACHE = "comisiones-v41";
+var CACHE = "comisiones-v42";
 var FLYERS = "comisiones-flyers";
 var SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
@@ -39,7 +39,7 @@ self.addEventListener("fetch", function (e) {
     return;
   }
 
-  if (["files.wearebombo.com", "storage.googleapis.com", "images.venti.live", "d26en73i7b5aju.cloudfront.net", "www.passline.com"].indexOf(url.hostname) >= 0 && /\.(jpe?g|png|webp|gif)$|\/events\/|user-images/i.test(url.pathname)) {
+  if (["files.wearebombo.com", "storage.googleapis.com", "images.venti.live", "d26en73i7b5aju.cloudfront.net", "www.passline.com", "cdn.getcrowder.com"].indexOf(url.hostname) >= 0 && /\.(jpe?g|png|webp|gif)$|\/events\/|user-images/i.test(url.pathname)) {
     e.respondWith(caches.open(FLYERS).then(function (c) {
       return c.match(req).then(function (hit) {
         return hit || fetch(req).then(function (res) { c.put(req, res.clone()); return res; });

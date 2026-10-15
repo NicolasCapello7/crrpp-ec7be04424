@@ -83,10 +83,11 @@ function plataformaDe(t) {
   if (h === "venti.live" || h === "venti.com.ar") return "venti";
   if (h === "planout.ar" || h === "planout.com.ar") return "planout";
   if (h === "passline.com" || h === "home.passline.com" || h === "passline.com.ar") return "passline";
+  if (h === "talk-tickets.com") return "talk";
   return null;
 }
 function linkPermitido(t) { return !!plataformaDe(t); }
-const HOSTS_IMAGEN = ["files.wearebombo.com", "storage.googleapis.com", "images.venti.live", "d26en73i7b5aju.cloudfront.net", "www.passline.com", "passline.com"];
+const HOSTS_IMAGEN = ["files.wearebombo.com", "storage.googleapis.com", "images.venti.live", "d26en73i7b5aju.cloudfront.net", "www.passline.com", "passline.com", "cdn.getcrowder.com"];
 function imagenPermitida(t) { try { const u = new URL(t); return u.protocol === "https:" && HOSTS_IMAGEN.includes(u.hostname); } catch (e) { return false; } }
 
 function leerEventoLD(html) {
@@ -217,12 +218,33 @@ async function leerPassline(link) {
   return Object.assign({}, ev, { url: link.split("?")[0], nombre: ev.nombre, ofertas: ofertas.length ? ofertas : ev.ofertas });
 }
 
+// Talk Tickets: the public page has schema.org Event with prices but no ticket names (those need an account),
+// so the card shows the lowest price as "Precio desde".
+async function leerTalk(link) {
+  const r = await fetch(link, { headers: { "User-Agent": UA, "Accept-Language": "es-AR,es;q=0.9" }, redirect: "follow" });
+  if (r.status === 403 || r.status === 405 || r.headers.get("x-amzn-waf-action")) throw { code: "protegido" };
+  if (r.status >= 400) throw { code: "plataforma" };
+  const html = await r.text();
+  const ev = leerEventoLD(html);
+  if (!ev) throw { code: "evento" };
+  const precios = ev.ofertas.map(o => o.precio).filter(p => p > 0);
+  return {
+    url: meta(html, "og:url") || link,
+    nombre: ev.nombre || meta(html, "og:title"),
+    inicio: /Z$/.test(ev.inicio) ? aHoraAR(ev.inicio) : ev.inicio,
+    flyer: ev.flyer || meta(html, "og:image"),
+    lugar: ev.lugar,
+    ofertas: precios.length ? [{ nombre: "Precio desde", precio: Math.min.apply(null, precios), disponible: true, vip: false }] : []
+  };
+}
+
 async function leerLink(link) {
   const p = plataformaDe(link);
   if (p === "bombo") return leerBombo(link);
   if (p === "venti") return leerVenti(link);
   if (p === "planout") return leerPlanout(link);
   if (p === "passline") return leerPassline(link);
+  if (p === "talk") return leerTalk(link);
   throw { code: "link" };
 }
 // Current price = cheapest ticket on sale; if all sold out, the last tier marked agotado (same rule as the app)
@@ -596,7 +618,7 @@ export default {
         const nonce = tokenNuevo().slice(0, 24);
         return new Response(paginaHTML(lista, u, nonce), { headers: Object.assign({}, SEGURIDAD, {
           "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store",
-          "Content-Security-Policy": "default-src 'none'; img-src https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'nonce-" + nonce + "'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+          "Content-Security-Policy": "default-src 'none'; img-src https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'nonce-" + nonce + "'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         }) });
       }
       if (ruta === "/robots.txt") return new Response("User-agent: *\nDisallow: /api/\n", { headers: { "Content-Type": "text/plain" } });
