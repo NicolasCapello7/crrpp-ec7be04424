@@ -35,9 +35,6 @@ function json(env, body, status) {
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function esBombo(u) { return /(^|\.)wearebombo\.com$/.test(u.hostname) || u.hostname === "wearebombo.app.link"; }
-function linkBombo(t) { try { const u = new URL(t); return (u.protocol === "https:" || u.protocol === "http:") && esBombo(u); } catch (e) { return false; } }
-function imagenBombo(t) { try { const u = new URL(t); return u.protocol === "https:" && (u.hostname === "files.wearebombo.com" || u.hostname === "storage.googleapis.com"); } catch (e) { return false; } }
 function slugDe(t) {
   return String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30).replace(/-+$/g, "");
@@ -52,12 +49,47 @@ function tokenNuevo() {
   return [...a].map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// ---------- Bombo reader ----------
-async function traer(url) {
-  const r = await fetch(url, { headers: { "User-Agent": UA, "Accept-Language": "es-AR,es;q=0.9" }, redirect: "follow" });
+// ---------- event readers: Bombo, Venti, Planout, Passline ----------
+// Each reader returns { url, nombre, inicio (ISO with -03:00), flyer, lugar, ofertas: [{ nombre, precio, disponible, vip }] }
+async function traer(url, opciones) {
+  const r = await fetch(url, Object.assign({ headers: { "User-Agent": UA, "Accept-Language": "es-AR,es;q=0.9" }, redirect: "follow" }, opciones || {}));
   return { status: r.status, url: r.url, html: await r.text() };
 }
-function leerEvento(html) {
+function entidades(t) {
+  const mapa = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", nbsp: " ", mdash: "—", ndash: "–", aacute: "á", eacute: "é", iacute: "í", oacute: "ó", uacute: "ú", ntilde: "ñ", Aacute: "Á", Eacute: "É", Iacute: "Í", Oacute: "Ó", Uacute: "Ú", Ntilde: "Ñ", uuml: "ü" };
+  return String(t || "")
+    .replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n))
+    .replace(/&#x([0-9a-f]+);/gi, (m, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&([a-z]+);/gi, (m, n) => (n in mapa ? mapa[n] : m));
+}
+function textoPlano(html) { return entidades(String(html || "").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, " ")).replace(/[ \t]+/g, " ").trim(); }
+function meta(html, prop) {
+  const m = html.match(new RegExp('<meta[^>]+(?:property|name)="' + prop + '"[^>]+content="([^"]*)"', "i")) ||
+            html.match(new RegExp('<meta[^>]+content="([^"]*)"[^>]+(?:property|name)="' + prop + '"', "i"));
+  return m ? entidades(m[1]).trim() : "";
+}
+// "2026-11-21T19:00:00.000Z" -> "2026-11-21T16:00:00-03:00" (Argentina)
+function aHoraAR(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  return new Date(d.getTime() - 3 * 3600 * 1000).toISOString().slice(0, 19) + "-03:00";
+}
+function plataformaDe(t) {
+  let u;
+  try { u = new URL(t); } catch (e) { return null; }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+  const h = u.hostname.replace(/^www\./, "");
+  if (/(^|\.)wearebombo\.com$/.test(h) || h === "wearebombo.app.link") return "bombo";
+  if (h === "venti.live" || h === "venti.com.ar") return "venti";
+  if (h === "planout.ar" || h === "planout.com.ar") return "planout";
+  if (h === "passline.com" || h === "home.passline.com" || h === "passline.com.ar") return "passline";
+  return null;
+}
+function linkPermitido(t) { return !!plataformaDe(t); }
+const HOSTS_IMAGEN = ["files.wearebombo.com", "storage.googleapis.com", "images.venti.live", "d26en73i7b5aju.cloudfront.net", "www.passline.com", "passline.com"];
+function imagenPermitida(t) { try { const u = new URL(t); return u.protocol === "https:" && HOSTS_IMAGEN.includes(u.hostname); } catch (e) { return false; } }
+
+function leerEventoLD(html) {
   for (const b of html.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/g)) {
     let j;
     try { j = JSON.parse(b[1]); } catch (e) { continue; }
@@ -65,10 +97,10 @@ function leerEvento(html) {
       if (!ev || !/Event$/.test(String(ev["@type"] || ""))) continue;
       const imagen = Array.isArray(ev.image) ? ev.image[0] : ev.image;
       return {
-        nombre: ev.name || "",
+        nombre: entidades(ev.name || ""),
         inicio: ev.startDate || "",
         flyer: typeof imagen === "string" ? imagen : (imagen && imagen.url) || "",
-        lugar: (ev.location && (ev.location.name || (ev.location.address && ev.location.address.streetAddress))) || "",
+        lugar: entidades((ev.location && (ev.location.name || (ev.location.address && ev.location.address.streetAddress))) || ""),
         ofertas: (Array.isArray(ev.offers) ? ev.offers : ev.offers ? [ev.offers] : []).map(o => ({
           nombre: o.name || "", precio: Number(o.price) || 0,
           disponible: !/SoldOut|OutOfStock|Discontinued/i.test(String(o.availability || ""))
@@ -78,19 +110,123 @@ function leerEvento(html) {
   }
   return null;
 }
-async function leerLink(link) {
+
+async function leerBombo(link) {
   let pagina = await traer(link);
   if (new URL(link).hostname === "wearebombo.app.link") {
     const m = pagina.html.match(/https:\/\/wearebombo\.com\/event[o]?\/[A-Za-z0-9-]+/);
     if (!m) throw { code: "evento" };
     pagina = await traer(m[0]);
   }
-  if (pagina.status >= 400) throw { code: "bombo" };
-  const ev = leerEvento(pagina.html);
+  if (pagina.status >= 400) throw { code: "plataforma" };
+  const ev = leerEventoLD(pagina.html);
   if (!ev) throw { code: "evento" };
   return Object.assign({ url: pagina.url.split("?")[0] }, ev);
 }
+
+async function leerVenti(link) {
+  const m = new URL(link).pathname.match(/\/evento\/([^/?#]+)/);
+  if (!m) throw { code: "evento" };
+  const r = await fetch("https://api.venti.live/api/event/urlName/" + encodeURIComponent(decodeURIComponent(m[1])), { headers: { "User-Agent": UA, "Origin": "https://venti.live", "Accept": "application/json" } });
+  if (r.status >= 400) throw { code: r.status === 404 ? "evento" : "plataforma" };
+  const ev = ((await r.json().catch(() => ({}))) || {}).event;
+  if (!ev || !ev.name) throw { code: "evento" };
+  return {
+    url: "https://venti.live/evento/" + ev.urlName,
+    nombre: ev.name,
+    inicio: aHoraAR(ev.startDate),
+    flyer: ev.bannerImg || ev.promoImg || "",
+    lugar: ev.placeName || "",
+    ofertas: (ev.TicketTypes || []).filter(t => t.visibilityMode !== "hidden").map(t => {
+      const seccion = (t.ticketTypeSection || []).map(x => x.name).join(" ");
+      return { nombre: String(t.name || "").replace(/^AGOTADO\s*-\s*/i, ""), precio: (Number(t.priceInCents) || 0) / 100, disponible: !!t.canBeSelled, vip: /vip/i.test(t.name + " " + seccion) };
+    })
+  };
+}
+
+// Planout: the event page links to comprarEvento?idEvento=N; that page has the session and channel ids,
+// and a DWR call returns every ticket tier per zone (GENERAL / VIP) with its price and remaining stock.
+async function leerPlanout(link) {
+  const u = new URL(link);
+  let idEvento = u.searchParams.get("idEvento");
+  let nombre = "", flyer = "";
+  if (!idEvento || !/comprarEvento/i.test(u.pathname)) {
+    const p = await traer(link);
+    if (p.status >= 400) throw { code: "plataforma" };
+    nombre = meta(p.html, "og:title"); flyer = meta(p.html, "og:image");
+    const m = p.html.match(/comprarEvento\?idEvento=(\d+)/);
+    if (m) idEvento = m[1];
+  }
+  if (!idEvento) throw { code: "evento" };
+  const compra = await traer("https://planout.ar/eventos/es/comprarEvento?idEvento=" + idEvento);
+  if (compra.status >= 400) throw { code: "plataforma" };
+  if (!nombre) nombre = meta(compra.html, "og:title") || textoPlano((compra.html.match(/<title>([\s\S]*?)<\/title>/i) || [])[1]);
+  if (!flyer) flyer = meta(compra.html, "og:image");
+  // the purchase page gives the poster as a relative path of Planout's image CDN
+  if (flyer && !/^https?:/i.test(flyer)) flyer = "https://d26en73i7b5aju.cloudfront.net/eventos/" + flyer.replace(/^\/+/, "");
+  const canal = (compra.html.match(/idCanal\s*=\s*'?(\d+)/) || [])[1];
+  const sesiones = [...new Set([...compra.html.matchAll(/"idSesion":(\d+)/g)].map(x => x[1]))];
+  const fecha = (compra.html.match(/"fechaCelebracionStr":"([\d-]+T[\d:]+)"/) || [])[1];
+  // og:title is "Event name - Venue"
+  const partes = nombre.split(" - ");
+  const lugar = partes.length > 1 ? partes.pop().trim() : "";
+  nombre = partes.join(" - ").trim();
+  let ofertas = [];
+  if (canal && sesiones.length) {
+    const cuerpo = ["callCount=1", "nextReverseAjaxIndex=0", "c0-scriptName=CompraAjax", "c0-methodName=getAllProductosSesion", "c0-id=0"]
+      .concat(sesiones.map((s, i) => "c0-e" + (i + 1) + "=number:" + s))
+      .concat(["c0-param0=array:[" + sesiones.map((s, i) => "reference:c0-e" + (i + 1)).join(",") + "]", "c0-param1=number:" + canal,
+        "batchId=0", "instanceId=0", "page=" + encodeURIComponent("/eventos/es/comprarEvento?idEvento=" + idEvento), "scriptSessionId="]).join("\n");
+    const r = await fetch("https://planout.ar/eventos/dwr/call/plaincall/CompraAjax.getAllProductosSesion.dwr", { method: "POST", headers: { "User-Agent": UA, "Content-Type": "text/plain" }, body: cuerpo });
+    const txt = await r.text();
+    const objetos = {};
+    for (const a of txt.matchAll(/\b(s\d+)\.(\w+)=("(?:[^"\\]|\\.)*"|[^;]*);/g)) {
+      (objetos[a[1]] = objetos[a[1]] || {})[a[2]] = a[3].startsWith('"') ? JSON.parse(a[3]) : a[3];
+    }
+    ofertas = Object.values(objetos).filter(o => o.litProducto && o.precio != null && o.esEntrada !== "false" && !(Number(o.minEntradasVenta) > 1))
+      .map(o => ({ nombre: entidades(o.litProducto), precio: Number(o.precio) || 0, disponible: Number(o.maxCantidadSesion) > 0, vip: /vip/i.test(o.litProducto + " " + (o.litZona || "")) }));
+  }
+  return {
+    url: "https://planout.ar/eventos/es/comprarEvento?idEvento=" + idEvento,
+    nombre, inicio: fecha ? fecha.slice(0, 16) + ":00-03:00" : "", flyer, lugar, ofertas
+  };
+}
+
+// Passline: schema.org Event plus the ticket table (#tabla_tickets_sin_codigo). Busy events sit behind a virtual queue.
+async function leerPassline(link) {
+  const r = await fetch(link, { headers: { "User-Agent": UA, "Accept-Language": "es-AR,es;q=0.9" }, redirect: "manual" });
+  const destino = r.headers.get("location") || "";
+  if (r.status >= 300 && r.status < 400) {
+    if (/queue-it/i.test(destino)) throw { code: "fila" };
+    return leerPassline(new URL(destino, link).toString());
+  }
+  if (r.status === 403 || r.headers.get("cf-mitigated")) throw { code: "protegido" };
+  if (r.status >= 400) throw { code: "plataforma" };
+  const html = await r.text();
+  const ev = leerEventoLD(html) || { nombre: meta(html, "og:title").replace(/^Passline\s*-\s*/i, ""), inicio: "", flyer: meta(html, "og:image"), lugar: "", ofertas: [] };
+  const tabla = (html.match(/<table id="tabla_tickets_sin_codigo">([\s\S]*?)<\/table>/) || [])[1] || "";
+  const ofertas = [];
+  for (const fila of tabla.matchAll(/<tr[^>]*id="td_tck_\d+"[^>]*>([\s\S]*?)<\/tr/g)) {
+    const celdas = [...fila[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(c => c[1]);
+    if (celdas.length < 2) continue;
+    const nombre = textoPlano(celdas[0]).split("\n")[0].trim();
+    const precio = Number(((textoPlano(celdas[1]).match(/\$\s?([\d.]+)/) || [])[1] || "").replace(/\./g, "")) || 0;
+    const disponible = /<select/i.test(celdas[2] || "") && !/agotad/i.test(fila[1]);
+    if (nombre) ofertas.push({ nombre, precio, disponible });
+  }
+  return Object.assign({}, ev, { url: link.split("?")[0], nombre: ev.nombre, ofertas: ofertas.length ? ofertas : ev.ofertas });
+}
+
+async function leerLink(link) {
+  const p = plataformaDe(link);
+  if (p === "bombo") return leerBombo(link);
+  if (p === "venti") return leerVenti(link);
+  if (p === "planout") return leerPlanout(link);
+  if (p === "passline") return leerPassline(link);
+  throw { code: "link" };
+}
 // Current price = cheapest ticket on sale; if all sold out, the last tier marked agotado (same rule as the app)
+function esVip(o) { return typeof o.vip === "boolean" ? o.vip : /vip/i.test(o.nombre); }
 function elegirPrecios(ofertas) {
   function actual(lista) {
     if (!lista.length) return null;
@@ -98,7 +234,7 @@ function elegirPrecios(ofertas) {
     const o = disp.length ? disp.reduce((a, b) => (b.precio < a.precio ? b : a)) : lista.reduce((a, b) => (b.precio > a.precio ? b : a));
     return { nombre: o.nombre, precio: o.precio, agotado: !disp.length };
   }
-  return { general: actual(ofertas.filter(o => !/vip/i.test(o.nombre))), vip: actual(ofertas.filter(o => /vip/i.test(o.nombre))) };
+  return { general: actual(ofertas.filter(o => !esVip(o))), vip: actual(ofertas.filter(esVip)) };
 }
 
 // ---------- Google sign-in ----------
@@ -173,12 +309,12 @@ function limpiarEventos(lista) {
   if (!Array.isArray(lista)) return null;
   return lista.slice(0, 150).map(c => ({
     id: String(c.id || "").slice(0, 40),
-    link: linkBombo(c.link) ? String(c.link).slice(0, 600) : "",
-    url: linkBombo(c.url) ? String(c.url).slice(0, 600) : "",
+    link: linkPermitido(c.link) ? String(c.link).slice(0, 600) : "",
+    url: linkPermitido(c.url) ? String(c.url).slice(0, 600) : "",
     nombre: String(c.nombre || "").slice(0, 200),
     fecha: /^\d{4}-\d{2}-\d{2}$/.test(c.fecha || "") ? c.fecha : "",
     hora: /^\d{2}:\d{2}$/.test(c.hora || "") ? c.hora : "",
-    flyer: imagenBombo(c.flyer) ? String(c.flyer).slice(0, 600) : "",
+    flyer: imagenPermitida(c.flyer) ? String(c.flyer).slice(0, 600) : "",
     lugar: String(c.lugar || "").slice(0, 200),
     productoraId: c.productoraId ? String(c.productoraId).slice(0, 40) : null,
     productoraNombre: String(c.productoraNombre || "").trim().slice(0, 80),
@@ -207,7 +343,7 @@ async function refrescar(env, sub) {
       const ev = await leerLink(c.link);
       const precios = elegirPrecios(ev.ofertas);
       c.general = precios.general; c.vip = precios.vip;
-      if (imagenBombo(ev.flyer)) c.flyer = ev.flyer;
+      if (imagenPermitida(ev.flyer)) c.flyer = ev.flyer;
       if (ev.inicio) { c.fecha = ev.inicio.slice(0, 10); c.hora = ev.inicio.slice(11, 16); }
       c.actualizado = new Date().toISOString();
     } catch (e) { /* keep last known prices */ }
@@ -378,7 +514,7 @@ export default {
         // only the app may use the reader (keeps it from being used as a public proxy)
         if (req.headers.get("Origin") !== env.APP_ORIGIN) return json(env, { ok: false, error: "origen" }, 403);
         const link = url.searchParams.get("url") || "";
-        if (!linkBombo(link)) return json(env, { ok: false, error: "link" }, 400);
+        if (!linkPermitido(link)) return json(env, { ok: false, error: "link" }, 400);
         try { return json(env, Object.assign({ ok: true }, await leerLink(link))); }
         catch (e) { return json(env, { ok: false, error: (e && e.code) || "red" }, 502); }
       }
@@ -460,7 +596,7 @@ export default {
         const nonce = tokenNuevo().slice(0, 24);
         return new Response(paginaHTML(lista, u, nonce), { headers: Object.assign({}, SEGURIDAD, {
           "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store",
-          "Content-Security-Policy": "default-src 'none'; img-src https://files.wearebombo.com https://storage.googleapis.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'nonce-" + nonce + "'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+          "Content-Security-Policy": "default-src 'none'; img-src https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'nonce-" + nonce + "'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         }) });
       }
       if (ruta === "/robots.txt") return new Response("User-agent: *\nDisallow: /api/\n", { headers: { "Content-Type": "text/plain" } });

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://files.wearebombo.com https://storage.googleapis.com https://*.googleusercontent.com; connect-src 'self' https://eventos.nicolascapelloubeda.workers.dev https://accounts.google.com/gsi/ https://fonts.googleapis.com https://fonts.gstatic.com https://files.wearebombo.com https://storage.googleapis.com; frame-src https://accounts.google.com/gsi/; base-uri 'self'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://*.googleusercontent.com; connect-src 'self' https://eventos.nicolascapelloubeda.workers.dev https://accounts.google.com/gsi/ https://fonts.googleapis.com https://fonts.gstatic.com https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com; frame-src https://accounts.google.com/gsi/; base-uri 'self'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#100e15">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -364,7 +364,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   // Persisted data: { pct: number|null, eventos: [...], productoras: [{id, nombre, factura}], ultimaCopia: ISO|null }
   var data = { pct: null, eventos: [], productoras: [], cartelera: [], ultimaCopia: null };
-  // Lector de Bombo (Cloudflare Worker, see /lector). Empty until it is deployed.
+  // Event reader for Bombo, Venti, Planout and Passline (server /lector)
   var API_URL = "https://eventos.nicolascapelloubeda.workers.dev";
   var LECTOR_URL = API_URL + "/lector";
   var GOOGLE_CLIENT_ID = "174152864828-tbk0qlbnm28kak0lvbum8mvi296n2mtj.apps.googleusercontent.com";
@@ -376,7 +376,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 40;
+  var VERSION = 41;
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
@@ -847,7 +847,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     return h;
   }
 
-  // ---------- Eventos: cards built from a Bombo link ----------
+  // ---------- Eventos: cards built from a ticketing link (Bombo, Venti, Planout, Passline) ----------
   var DIAS = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
   function fechaLarga(fecha, hora) {
     var p = partes(fecha);
@@ -865,8 +865,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         : lista.reduce(function (a, b) { return b.precio > a.precio ? b : a; });
       return { nombre: o.nombre, precio: o.precio, agotado: !disp.length };
     }
-    var vip = ofertas.filter(function (o) { return /vip/i.test(o.nombre); });
-    var gen = ofertas.filter(function (o) { return !/vip/i.test(o.nombre); });
+    // the reader marks VIP when the platform says so (zone/section); otherwise go by the ticket name
+    function esVip(o) { return typeof o.vip === "boolean" ? o.vip : /vip/i.test(o.nombre); }
+    var vip = ofertas.filter(esVip);
+    var gen = ofertas.filter(function (o) { return !esVip(o); });
     return { general: actual(gen), vip: actual(vip) };
   }
   function datosDeLector(j, link) {
@@ -887,12 +889,15 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   }
   var ERRORES_LECTOR = {
     "sin-lector": "La lectura automática todavía no está activada. Cargalo a mano por ahora.",
-    "link": "Ese link no es de Bombo. Copialo desde la app o la web de Bombo.",
+    "link": "Ese link no es de una plataforma compatible. Usá un link de Bombo, Venti, Planout o Passline.",
+    "plataforma": "La plataforma no respondió. Probá de nuevo en un rato.",
+    "fila": "Este evento de Passline tiene fila de espera virtual y no se puede leer ahora. Cargalo a mano o probá más tarde.",
+    "protegido": "La plataforma no dejó leer el evento automáticamente. Cargalo a mano.",
     "evento": "No encontré los datos del evento en ese link.",
     "bombo": "Bombo no respondió. Probá de nuevo en un rato.",
     "red": "No hay conexión o el lector no respondió. Probá de nuevo."
   };
-  function linkValido(t) { return /^https?:\/\/(www\.)?(wearebombo\.com|wearebombo\.app\.link)\//i.test(t); }
+  function linkValido(t) { return /^https?:\/\/(www\.)?(wearebombo\.com|wearebombo\.app\.link|venti\.live|venti\.com\.ar|planout\.ar|planout\.com\.ar|passline\.com|home\.passline\.com|passline\.com\.ar)\//i.test(t); }
   function extraerLink(t) { var m = String(t || "").match(/https?:\/\/[^\s]+/); return m ? m[0] : String(t || "").trim(); }
 
   // ---------- RRPP account (Google) and server sync ----------
@@ -1076,7 +1081,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   function cuentaCard(enAjustes) {
     if (!cuenta) {
       return '<section class="card cuenta"><h2>' + (enAjustes ? "Tu cuenta" : "Tu página de eventos") + "</h2>" +
-        "<p>Entrá con Google para tener tu link propio: tus clientes ven tus próximos eventos con precios al día y compran con tu link de Bombo.</p>" +
+        "<p>Entrá con Google para tener tu link propio: tus clientes ven tus próximos eventos con precios al día y compran con tu link personal.</p>" +
         '<div class="g-btn"></div></section>';
     }
     if (!cuenta.slug) {
@@ -1137,7 +1142,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         }).join("") + "</select></div>";
     }
     if (!data.cartelera.length) {
-      return cuentaCard(false) + '<div class="empty"><strong>Todavía no agregaste eventos</strong>Tocá <b>Agregar evento</b> y pegá el link de Bombo. Armo la tarjeta con el flyer, la fecha y los precios de la entrada general y VIP.</div>';
+      return cuentaCard(false) + '<div class="empty"><strong>Todavía no agregaste eventos</strong>Tocá <b>Agregar evento</b> y pegá el link del evento de Bombo, Venti, Planout o Passline. Armo la tarjeta con el flyer, la fecha y los precios de la entrada general y VIP.</div>';
     }
     var h = cuentaCard(false) + chipsProd + (LECTOR_URL && data.cartelera.some(function (c) { return c.link; }) ? '<div class="auto-estado" id="auto-estado">' + esc(textoAuto()) + "</div>" : "") +
       '<div class="cartel-list">' + proximos.map(cartelCard).join("") + "</div>";
@@ -1193,10 +1198,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var editando = !!(d && d.id);
     var h = '<div class="scrim" data-action="close-bg"><form class="sheet" id="cartel-form" role="dialog" aria-modal="true" aria-labelledby="c-title" novalidate>' +
       '<div class="sheet-h"><h2 id="c-title">' + (editando ? "Editar evento" : "Agregar evento") + '</h2><button type="button" class="x" data-action="close" aria-label="Cerrar">✕</button></div>' +
-      '<div class="field"><label for="c-link">Link de Bombo</label><div class="link-row">' +
-      '<input id="c-link" class="input" type="url" inputmode="url" autocomplete="off" autocapitalize="off" placeholder="https://wearebombo.com/evento/…" value="' + esc(linkVal) + '">' +
+      '<div class="field"><label for="c-link">Link del evento</label><div class="link-row">' +
+      '<input id="c-link" class="input" type="url" inputmode="url" autocomplete="off" autocapitalize="off" placeholder="Link de Bombo, Venti, Planout o Passline" value="' + esc(linkVal) + '">' +
       '<button type="button" class="btn ghost sm" data-action="c-pegar">Pegar</button></div></div>';
-    if (st.fase === "buscando") h += '<div class="c-estado">Buscando en Bombo…</div>';
+    if (st.fase === "buscando") h += '<div class="c-estado">Buscando el evento…</div>';
     if (error) h += '<div class="err">' + esc(error) + "</div>";
     if (st.fase === "listo" && d) {
       h += '<div class="cartel preview-cartel">' + '<div class="cartel-top">' +
@@ -1301,13 +1306,13 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     return t ? new Date(t) : null;
   }
   function textoAuto() {
-    if (auto.corriendo) return "Actualizando precios de Bombo…";
+    if (auto.corriendo) return "Actualizando precios…";
     if (auto.error) return "No pude actualizar los precios (¿sin conexión?). Reintento en unos minutos.";
     var u = ultimaActualizacion();
     if (!u) return "Los precios se actualizan solos cada 5 minutos.";
     var min = Math.floor((Date.now() - u.getTime()) / 60000);
     var hora = String(u.getHours()).padStart(2, "0") + ":" + String(u.getMinutes()).padStart(2, "0");
-    return "Precios de Bombo actualizados a las " + hora + (min < 1 ? " (recién)" : " (hace " + min + " min)") + ". Se actualizan solos cada 5 minutos.";
+    return "Precios actualizados a las " + hora + (min < 1 ? " (recién)" : " (hace " + min + " min)") + ". Se actualizan solos cada 5 minutos.";
   }
   function pintarAuto() { var el = document.getElementById("auto-estado"); if (el) el.textContent = textoAuto(); }
 
@@ -1351,7 +1356,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   function actualizarCartel(id) {
     var c = data.cartelera.find(function (x) { return x.id === id; });
     if (!c || !c.link) return;
-    toast("Buscando precios en Bombo…");
+    toast("Buscando precios…");
     consultarLector(c.link).then(function (j) {
       var nuevo = datosDeLector(j, c.link);
       var igual = preciosIguales(c, nuevo);
