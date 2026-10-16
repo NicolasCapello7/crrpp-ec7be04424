@@ -1,10 +1,22 @@
 name = "eventos"
 main = "worker.js"
 compatibility_date = "2025-06-01"
+# bpmtickets.com.ar (and www, which redirects) point to this Worker; the old workers.dev address keeps answering
+workers_dev = true
+routes = [
+  { pattern = "bpmtickets.com.ar", custom_domain = true },
+  { pattern = "www.bpmtickets.com.ar", custom_domain = true }
+]
 
 [vars]
-APP_ORIGIN = "https://nicolascapello7.github.io"
+SITIO = "https://bpmtickets.com.ar"
+APP_ORIGIN = "https://bpmtickets.com.ar"
+# sites allowed to call the API: the new address and the old GitHub Pages app (to carry its data over)
+ORIGENES = "https://bpmtickets.com.ar,https://nicolascapello7.github.io"
+APP_FUENTE = "https://nicolascapello7.github.io/crrpp-ec7be04424"
+MAIL_DESDE = "BPM Tickets <no-responder@bpmtickets.com.ar>"
 GOOGLE_CLIENT_ID = "174152864828-tbk0qlbnm28kak0lvbum8mvi296n2mtj.apps.googleusercontent.com"
+# RESEND_API_KEY is a secret: set it in Cloudflare (Workers > eventos > Settings > Variables and Secrets)
 
 [[d1_databases]]
 binding = "DB"

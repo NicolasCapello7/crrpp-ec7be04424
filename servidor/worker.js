@@ -1,11 +1,16 @@
-// Servidor de Comisiones RRPP (Cloudflare Worker + D1)
-//   /lector?url=…        lee un evento público de Bombo (lo usa la app)
-//   /api/…               cuentas con Google, nombre público y lista de eventos de cada RRPP
-//   /<nombre-del-rrpp>   página pública con los próximos eventos de ese RRPP, para sus clientes
+// Servidor de BPM Tickets (Cloudflare Worker + D1), en bpmtickets.com.ar
+//   /                         la app de los RRPP (se sirve desde GitHub Pages)
+//   /lector?url=…             lee un evento público de Bombo, Venti, Planout, Passline o Talk (lo usa la app)
+//   /api/…                    cuentas (Google o mail y contraseña), nombre público y lista de eventos de cada RRPP
+//   /eventos/<nombre>[?id=…]  página pública con los próximos eventos de ese RRPP, para sus clientes
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
 // Shown when the link is shared (WhatsApp, Instagram…): the app logo, not an event flyer
-const LOGO_URL = "https://nicolascapello7.github.io/crrpp-ec7be04424/og.png";
-const RESERVADOS = new Set(["api", "lector", "favicon.ico", "robots.txt", "admin", "www", "app", "login"]);
+const LOGO_URL = "https://bpmtickets.com.ar/og.png";
+// App files served from GitHub Pages at the root of the site
+const ARCHIVOS_APP = new Set(["/index.html", "/sw.js", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/og.png", "/privacidad.html"]);
+const CODIGO_MS = 15 * 60 * 1000;         // mailed codes last 15 minutes
+const HORA_MS = 3600 * 1000;
+const RESERVADOS = new Set(["api", "lector", "favicon.ico", "robots.txt", "admin", "www", "app", "login", "eventos", "privacidad", "registro", "entrar"]);
 const VIEJO_MS = 15 * 60 * 1000;          // public page refreshes prices older than this
 const SESION_MS = 180 * 24 * 3600 * 1000; // app sessions last 6 months
 const MESES_LARGO = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
@@ -21,9 +26,10 @@ const SEGURIDAD = {
   "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()"
 };
 const MAX_CUERPO = 512 * 1024; // requests larger than this are rejected
+function origenesApp(env) { return String(env.ORIGENES || env.APP_ORIGIN || "").split(",").map(s => s.trim()).filter(Boolean); }
 function corsHeaders(env, extra) {
   return Object.assign({}, SEGURIDAD, {
-    "Access-Control-Allow-Origin": env.APP_ORIGIN,
+    "Access-Control-Allow-Origin": env.ORIGEN || origenesApp(env)[0] || "",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Vary": "Origin"
@@ -47,6 +53,95 @@ async function sha256(t) {
 function tokenNuevo() {
   const a = new Uint8Array(32); crypto.getRandomValues(a);
   return [...a].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+// ---------- passwords, mailed codes and rate limits ----------
+const ITERACIONES = 100000; // PBKDF2-SHA256 (the most Workers allow)
+function aB64(u8) { let s = ""; u8.forEach(b => { s += String.fromCharCode(b); }); return btoa(s); }
+function deB64(s) { const bin = atob(s), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+async function pbkdf2(clave, sal, iteraciones) {
+  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(clave), "PBKDF2", false, ["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: sal, iterations: iteraciones }, k, 256));
+}
+async function crearClave(clave) {
+  const sal = new Uint8Array(16); crypto.getRandomValues(sal);
+  return "pbkdf2$" + ITERACIONES + "$" + aB64(sal) + "$" + aB64(await pbkdf2(clave, sal, ITERACIONES));
+}
+function igualesSeguro(a, b) {
+  if (a.length !== b.length) return false;
+  let d = 0; for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i];
+  return d === 0;
+}
+async function claveCorrecta(clave, guardada) {
+  const p = String(guardada || "").split("$");
+  if (p.length !== 4 || p[0] !== "pbkdf2") { await pbkdf2(clave, new Uint8Array(16), ITERACIONES); return false; } // same time with or without account
+  return igualesSeguro(await pbkdf2(clave, deB64(p[2]), Number(p[1])), deB64(p[3]));
+}
+function emailLimpio(t) {
+  const e = String(t || "").trim().toLowerCase();
+  return e.length <= 120 && /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/.test(e) ? e : null;
+}
+function claveValida(t) { return typeof t === "string" && t.length >= 8 && t.length <= 128; }
+// Fixed-window counter; returns how many times this key was used in the window (including this one)
+async function sumarLimite(env, clave, ventana) {
+  const ahora = Date.now();
+  const f = await env.DB.prepare("INSERT INTO limites (clave, cuenta, desde) VALUES (?1, 1, ?2) ON CONFLICT(clave) DO UPDATE SET " +
+    "cuenta = CASE WHEN ?2 - desde > ?3 THEN 1 ELSE cuenta + 1 END, desde = CASE WHEN ?2 - desde > ?3 THEN ?2 ELSE desde END RETURNING cuenta")
+    .bind(clave, ahora, ventana).first();
+  return f ? f.cuenta : 1;
+}
+async function leerLimite(env, clave, ventana) {
+  const f = await env.DB.prepare("SELECT cuenta, desde FROM limites WHERE clave = ?").bind(clave).first();
+  return f && Date.now() - f.desde <= ventana ? f.cuenta : 0;
+}
+// Mail sending allowed? 5 per address and 20 per connection each hour
+async function puedeMandarMail(env, email, ip) {
+  const a = await sumarLimite(env, "mail:" + email, HORA_MS);
+  const b = await sumarLimite(env, "mail-ip:" + ip, HORA_MS);
+  return a <= 5 && b <= 20;
+}
+function codigoNuevo() { const a = new Uint32Array(1); crypto.getRandomValues(a); return String(a[0] % 1000000).padStart(6, "0"); }
+async function hashCodigo(email, tipo, codigo) { return sha256(email + "|" + tipo + "|" + codigo); }
+async function guardarCodigo(env, email, tipo, datos) {
+  const codigo = codigoNuevo();
+  await env.DB.prepare("INSERT INTO codigos (email, tipo, hash, datos, expira, intentos, enviado) VALUES (?, ?, ?, ?, ?, 0, ?) " +
+    "ON CONFLICT(email, tipo) DO UPDATE SET hash = excluded.hash, datos = excluded.datos, expira = excluded.expira, intentos = 0, enviado = excluded.enviado")
+    .bind(email, tipo, await hashCodigo(email, tipo, codigo), datos ? JSON.stringify(datos) : null, Date.now() + CODIGO_MS, Date.now()).run();
+  return codigo;
+}
+// Checks a mailed code; on success it is used up and its stored data returned
+async function usarCodigo(env, email, tipo, codigo) {
+  const f = await env.DB.prepare("SELECT hash, datos, expira, intentos FROM codigos WHERE email = ? AND tipo = ?").bind(email, tipo).first();
+  if (!f || f.expira < Date.now()) throw { code: "codigo-vencido" };
+  if (f.intentos >= 5) throw { code: "codigo-intentos" };
+  if (!/^\d{6}$/.test(String(codigo || "")) || await hashCodigo(email, tipo, String(codigo)) !== f.hash) {
+    await env.DB.prepare("UPDATE codigos SET intentos = intentos + 1 WHERE email = ? AND tipo = ?").bind(email, tipo).run();
+    throw { code: f.intentos + 1 >= 5 ? "codigo-intentos" : "codigo" };
+  }
+  await env.DB.prepare("DELETE FROM codigos WHERE email = ? AND tipo = ?").bind(email, tipo).run();
+  try { return f.datos ? JSON.parse(f.datos) : {}; } catch (e) { return {}; }
+}
+// Mails go out through Resend (key saved as the RESEND_API_KEY secret)
+async function mandarCodigo(env, email, tipo, codigo) {
+  if (!env.RESEND_API_KEY) throw { code: "mail-config" };
+  const motivo = tipo === "registro" ? "Para terminar de crear tu cuenta, ingresá este código en la app:" : "Para elegir una contraseña nueva, ingresá este código en la app:";
+  const html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#17141d">' +
+    '<p style="font-size:20px;font-weight:700;margin:0 0 16px">BPM <span style="color:#00b84f">TICKETS</span></p>' +
+    '<p style="font-size:15px;line-height:1.5;margin:0 0 16px">' + motivo + "</p>" +
+    '<p style="font-size:34px;font-weight:700;letter-spacing:8px;background:#ece9f1;border-radius:12px;padding:16px;text-align:center;margin:0 0 16px">' + codigo + "</p>" +
+    '<p style="font-size:13px;color:#696374;line-height:1.5;margin:0">Vence en 15 minutos. Si no fuiste vos, ignorá este mail: nadie puede entrar a tu cuenta sin este código.</p></div>';
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + env.RESEND_API_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from: env.MAIL_DESDE || "BPM Tickets <no-responder@bpmtickets.com.ar>",
+      to: [email],
+      subject: codigo + " es tu código de BPM Tickets",
+      html,
+      text: motivo + "\n\n" + codigo + "\n\nVence en 15 minutos. Si no fuiste vos, ignorá este mail."
+    })
+  });
+  if (!r.ok) throw { code: "mail" };
 }
 
 // ---------- event readers: Bombo, Venti, Planout, Passline ----------
@@ -293,7 +388,29 @@ async function usuarioDe(req, env) {
   return env.DB.prepare("SELECT u.sub, u.email, u.nombre, u.slug, u.instagram, u.whatsapp FROM sessions s JOIN users u ON u.sub = s.sub WHERE s.token_hash = ? AND s.expira > ?")
     .bind(await sha256(m[1]), Date.now()).first();
 }
-function usuarioPublico(u) { return { email: u.email, nombre: u.nombre || "", slug: u.slug || "", instagram: u.instagram || "", whatsapp: u.whatsapp || "" }; }
+// "nico-capello" -> …/eventos/nico-capello; a repeated name is stored as "nico-capello--3f9a" -> …/eventos/nico-capello?id=3f9a
+function linkDe(env, slug) {
+  if (!slug) return "";
+  const i = slug.indexOf("--");
+  return (env.SITIO || "https://bpmtickets.com.ar") + "/eventos/" + (i > 0 ? slug.slice(0, i) + "?id=" + slug.slice(i + 2) : slug);
+}
+function usuarioPublico(u, env) { return { email: u.email, nombre: u.nombre || "", slug: u.slug || "", link: linkDe(env, u.slug), instagram: u.instagram || "", whatsapp: u.whatsapp || "" }; }
+async function abrirSesion(env, sub, sugerido) {
+  const token = tokenNuevo();
+  await env.DB.prepare("INSERT INTO sessions (token_hash, sub, expira) VALUES (?, ?, ?)").bind(await sha256(token), sub, Date.now() + SESION_MS).run();
+  const u = await env.DB.prepare("SELECT sub, email, nombre, slug, instagram, whatsapp FROM users WHERE sub = ?").bind(sub).first();
+  return json(env, { ok: true, token, usuario: usuarioPublico(u, env), sugerido: slugDe(u.nombre || sugerido || u.email.split("@")[0]) });
+}
+// Old sessions, codes and counters are cleared now and then
+async function limpiarViejos(env) {
+  const ahora = Date.now();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM sessions WHERE expira < ?").bind(ahora),
+    env.DB.prepare("DELETE FROM codigos WHERE expira < ?").bind(ahora),
+    env.DB.prepare("DELETE FROM limites WHERE desde < ?").bind(ahora - 24 * HORA_MS),
+    env.DB.prepare("DELETE FROM traspasos WHERE creado < ?").bind(ahora - 30 * 24 * HORA_MS)
+  ]);
+}
 // "@nico.rrpp", "instagram.com/nico.rrpp/" -> "nico.rrpp"; null if it isn't a valid handle, "" if empty
 function limpiarInstagram(t) {
   t = String(t || "").trim();
@@ -315,10 +432,10 @@ function limpiarWhatsapp(t) {
 async function slugLibre(env, sub, base) {
   const ocupado = async s => RESERVADOS.has(s) || !!(await env.DB.prepare("SELECT 1 FROM users WHERE slug = ? AND sub != ?").bind(s, sub).first());
   if (!(await ocupado(base))) return base;
-  // same public name as another RRPP: add a short code that is always the same for this account
+  // same public name as another RRPP: add a short id that is always the same for this account (shown as ?id=…)
   const corto = base.slice(0, 30).replace(/-+$/g, "");
-  let slug = corto + "-" + (await sha256(sub)).slice(0, 4);
-  for (let i = 0; i < 5 && (await ocupado(slug)); i++) slug = corto + "-" + tokenNuevo().slice(0, 5);
+  let slug = corto + "--" + (await sha256(sub)).slice(0, 4);
+  for (let i = 0; i < 5 && (await ocupado(slug)); i++) slug = corto + "--" + tokenNuevo().slice(0, 5);
   return slug;
 }
 
@@ -542,35 +659,174 @@ function pagina404() {
     { status: 404, headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
 
+// The old app's own data (sales, productoras, %), carried once to the new site and deleted when it arrives
+function limpiarTraspaso(d) {
+  if (!d || typeof d !== "object" || d.app !== "comisiones-rrpp" || !Array.isArray(d.eventos) || d.eventos.length > 3000) return null;
+  const limpio = {
+    app: "comisiones-rrpp", exportado: new Date().toISOString(),
+    pct: typeof d.pct === "number" ? d.pct : null,
+    eventos: d.eventos.filter(e => e && typeof e === "object"),
+    productoras: Array.isArray(d.productoras) ? d.productoras.filter(p => p && typeof p === "object").slice(0, 200) : []
+  };
+  const texto = JSON.stringify(limpio);
+  return texto.length <= 400 * 1024 ? texto : null;
+}
+async function servirApp(env, ruta) {
+  const r = await fetch((env.APP_FUENTE || "https://nicolascapello7.github.io/crrpp-ec7be04424") + ruta, { cf: { cacheTtl: 30, cacheEverything: true } });
+  if (!r.ok) return pagina404();
+  const sinCache = ruta === "/index.html" || ruta === "/sw.js" || ruta === "/manifest.webmanifest";
+  return new Response(r.body, { headers: Object.assign({}, SEGURIDAD, {
+    "Content-Type": r.headers.get("Content-Type") || "application/octet-stream",
+    "Cache-Control": sinCache ? "no-cache" : "public, max-age=3600"
+  }) });
+}
+function pidioLaApp(req, env) {
+  const origen = req.headers.get("Origin");
+  if (origen) return origenesApp(env).includes(origen);
+  // same-site requests don't always carry Origin
+  return req.headers.get("Sec-Fetch-Site") === "same-origin" || (req.headers.get("Referer") || "").startsWith((env.SITIO || "https://bpmtickets.com.ar") + "/");
+}
+
 // ---------- router ----------
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     const ruta = url.pathname;
+    const sitio = env.SITIO || "https://bpmtickets.com.ar";
+    const host = new URL(sitio).hostname;
+    // CORS answers only the app's own sites
+    const origen = req.headers.get("Origin");
+    env = Object.assign({}, env, { ORIGEN: origen && origenesApp(env).includes(origen) ? origen : origenesApp(env)[0] });
     if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders(env) });
     if (Number(req.headers.get("Content-Length") || 0) > MAX_CUERPO) return json(env, { ok: false, error: "grande" }, 413);
+    if (url.hostname === "www." + host) return Response.redirect(sitio + ruta + url.search, 301);
+    const ip = req.headers.get("CF-Connecting-IP") || "";
 
     try {
       if (ruta === "/lector" && req.method === "GET") {
         // only the app may use the reader (keeps it from being used as a public proxy)
-        if (req.headers.get("Origin") !== env.APP_ORIGIN) return json(env, { ok: false, error: "origen" }, 403);
+        if (!pidioLaApp(req, env)) return json(env, { ok: false, error: "origen" }, 403);
         const link = url.searchParams.get("url") || "";
         if (!linkPermitido(link)) return json(env, { ok: false, error: "link" }, 400);
         try { return json(env, Object.assign({ ok: true }, await leerLink(link))); }
         catch (e) { return json(env, { ok: false, error: (e && e.code) || "red" }, 502); }
       }
 
+      // ----- sign in with Google -----
       if (ruta === "/api/login" && req.method === "POST") {
         const cuerpo = await req.json().catch(() => ({}));
         let g;
         try { g = await verificarGoogle(cuerpo.credential, env.GOOGLE_CLIENT_ID); }
         catch (e) { return json(env, { ok: false, error: "google" }, 401); }
-        await env.DB.prepare("INSERT INTO users (sub, email, nombre, creado) VALUES (?, ?, ?, ?) ON CONFLICT(sub) DO UPDATE SET email = excluded.email")
-          .bind(g.sub, g.email, null, new Date().toISOString()).run();
-        const token = tokenNuevo();
-        await env.DB.prepare("INSERT INTO sessions (token_hash, sub, expira) VALUES (?, ?, ?)").bind(await sha256(token), g.sub, Date.now() + SESION_MS).run();
-        const u = await env.DB.prepare("SELECT sub, email, nombre, slug, instagram, whatsapp FROM users WHERE sub = ?").bind(g.sub).first();
-        return json(env, { ok: true, token, usuario: usuarioPublico(u), sugerido: slugDe(g.name || g.email.split("@")[0]) });
+        const email = String(g.email).toLowerCase();
+        // same person = same Google account, or same mail already verified with a password
+        let u = await env.DB.prepare("SELECT sub FROM users WHERE google_sub = ?").bind(g.sub).first();
+        if (!u) {
+          u = await env.DB.prepare("SELECT sub FROM users WHERE email = ?").bind(email).first();
+          if (u) await env.DB.prepare("UPDATE users SET google_sub = ? WHERE sub = ?").bind(g.sub, u.sub).run();
+        }
+        if (!u) {
+          await env.DB.prepare("INSERT INTO users (sub, email, nombre, creado, google_sub) VALUES (?, ?, NULL, ?, ?)").bind(g.sub, email, new Date().toISOString(), g.sub).run();
+          u = { sub: g.sub };
+        }
+        ctx.waitUntil(limpiarViejos(env).catch(() => {}));
+        return abrirSesion(env, u.sub, g.name);
+      }
+
+      // ----- mail and password: sign up, sign in, forgotten password -----
+      if (ruta === "/api/registro" && req.method === "POST") {
+        const cuerpo = await req.json().catch(() => ({}));
+        const email = emailLimpio(cuerpo.email);
+        if (!email) return json(env, { ok: false, error: "email" }, 400);
+        if (!claveValida(cuerpo.clave)) return json(env, { ok: false, error: "clave" }, 400);
+        const existe = await env.DB.prepare("SELECT clave FROM users WHERE email = ?").bind(email).first();
+        if (existe && existe.clave) return json(env, { ok: false, error: "existe" }, 409);
+        if (!env.RESEND_API_KEY) return json(env, { ok: false, error: "mail-config" }, 503);
+        if (!(await puedeMandarMail(env, email, ip))) return json(env, { ok: false, error: "limite" }, 429);
+        // the account is created only after the mailed code proves the address is theirs
+        const codigo = await guardarCodigo(env, email, "registro", { clave: await crearClave(cuerpo.clave) });
+        try { await mandarCodigo(env, email, "registro", codigo); }
+        catch (e) { return json(env, { ok: false, error: (e && e.code) || "mail" }, 502); }
+        return json(env, { ok: true });
+      }
+      if (ruta === "/api/verificar" && req.method === "POST") {
+        const cuerpo = await req.json().catch(() => ({}));
+        const email = emailLimpio(cuerpo.email);
+        if (!email) return json(env, { ok: false, error: "email" }, 400);
+        let datos;
+        try { datos = await usarCodigo(env, email, "registro", cuerpo.codigo); }
+        catch (e) { return json(env, { ok: false, error: e.code || "codigo" }, 400); }
+        if (!datos.clave) return json(env, { ok: false, error: "codigo-vencido" }, 400);
+        const u = await env.DB.prepare("SELECT sub FROM users WHERE email = ?").bind(email).first();
+        let sub;
+        if (u) { sub = u.sub; await env.DB.prepare("UPDATE users SET clave = ? WHERE sub = ?").bind(datos.clave, sub).run(); }
+        else {
+          sub = "u-" + tokenNuevo().slice(0, 24);
+          await env.DB.prepare("INSERT INTO users (sub, email, nombre, creado, clave) VALUES (?, ?, NULL, ?, ?)").bind(sub, email, new Date().toISOString(), datos.clave).run();
+        }
+        return abrirSesion(env, sub);
+      }
+      if (ruta === "/api/entrar" && req.method === "POST") {
+        const cuerpo = await req.json().catch(() => ({}));
+        const email = emailLimpio(cuerpo.email);
+        if (!email || typeof cuerpo.clave !== "string") return json(env, { ok: false, error: "credenciales" }, 401);
+        // after 8 wrong passwords for a mail (or 30 from one connection) wait 15 minutes
+        if (await leerLimite(env, "entrar:" + email, 15 * 60 * 1000) >= 8 || await leerLimite(env, "entrar-ip:" + ip, 15 * 60 * 1000) >= 30)
+          return json(env, { ok: false, error: "bloqueado" }, 429);
+        const u = await env.DB.prepare("SELECT sub, clave FROM users WHERE email = ?").bind(email).first();
+        if (!(await claveCorrecta(cuerpo.clave.slice(0, 128), u && u.clave))) {
+          await sumarLimite(env, "entrar:" + email, 15 * 60 * 1000);
+          await sumarLimite(env, "entrar-ip:" + ip, 15 * 60 * 1000);
+          return json(env, { ok: false, error: "credenciales" }, 401);
+        }
+        await env.DB.prepare("DELETE FROM limites WHERE clave = ?").bind("entrar:" + email).run();
+        ctx.waitUntil(limpiarViejos(env).catch(() => {}));
+        return abrirSesion(env, u.sub);
+      }
+      if (ruta === "/api/olvide" && req.method === "POST") {
+        const cuerpo = await req.json().catch(() => ({}));
+        const email = emailLimpio(cuerpo.email);
+        if (!email) return json(env, { ok: false, error: "email" }, 400);
+        if (!env.RESEND_API_KEY) return json(env, { ok: false, error: "mail-config" }, 503);
+        if (!(await puedeMandarMail(env, email, ip))) return json(env, { ok: false, error: "limite" }, 429);
+        // same answer whether the mail has an account or not
+        const u = await env.DB.prepare("SELECT sub FROM users WHERE email = ?").bind(email).first();
+        if (u) {
+          const codigo = await guardarCodigo(env, email, "olvide", null);
+          ctx.waitUntil(mandarCodigo(env, email, "olvide", codigo).catch(() => {}));
+        }
+        return json(env, { ok: true });
+      }
+      if (ruta === "/api/reenviar" && req.method === "POST") {
+        const cuerpo = await req.json().catch(() => ({}));
+        const email = emailLimpio(cuerpo.email);
+        const tipo = cuerpo.tipo === "olvide" ? "olvide" : "registro";
+        if (!email) return json(env, { ok: false, error: "email" }, 400);
+        const f = await env.DB.prepare("SELECT datos, enviado FROM codigos WHERE email = ? AND tipo = ?").bind(email, tipo).first();
+        if (!f) return json(env, tipo === "olvide" ? { ok: true } : { ok: false, error: "codigo-vencido" }, tipo === "olvide" ? 200 : 400);
+        if (Date.now() - f.enviado < 45 * 1000) return json(env, { ok: false, error: "espera" }, 429);
+        if (!(await puedeMandarMail(env, email, ip))) return json(env, { ok: false, error: "limite" }, 429);
+        const codigo = await guardarCodigo(env, email, tipo, f.datos ? JSON.parse(f.datos) : null);
+        try { await mandarCodigo(env, email, tipo, codigo); }
+        catch (e) { return json(env, { ok: false, error: (e && e.code) || "mail" }, 502); }
+        return json(env, { ok: true });
+      }
+      if (ruta === "/api/restablecer" && req.method === "POST") {
+        const cuerpo = await req.json().catch(() => ({}));
+        const email = emailLimpio(cuerpo.email);
+        if (!email) return json(env, { ok: false, error: "email" }, 400);
+        if (!claveValida(cuerpo.clave)) return json(env, { ok: false, error: "clave" }, 400);
+        try { await usarCodigo(env, email, "olvide", cuerpo.codigo); }
+        catch (e) { return json(env, { ok: false, error: e.code || "codigo" }, 400); }
+        const u = await env.DB.prepare("SELECT sub FROM users WHERE email = ?").bind(email).first();
+        if (!u) return json(env, { ok: false, error: "codigo-vencido" }, 400);
+        // new password: every other open session is closed
+        await env.DB.batch([
+          env.DB.prepare("UPDATE users SET clave = ? WHERE sub = ?").bind(await crearClave(cuerpo.clave), u.sub),
+          env.DB.prepare("DELETE FROM sessions WHERE sub = ?").bind(u.sub),
+          env.DB.prepare("DELETE FROM limites WHERE clave = ?").bind("entrar:" + email)
+        ]);
+        return abrirSesion(env, u.sub);
       }
 
       if (ruta.startsWith("/api/")) {
@@ -578,7 +834,7 @@ export default {
         if (!u) return json(env, { ok: false, error: "sesion" }, 401);
 
         if (ruta === "/api/yo" && req.method === "GET") {
-          return json(env, { ok: true, usuario: usuarioPublico(u), eventos: await leerLista(env, u.sub) });
+          return json(env, { ok: true, usuario: usuarioPublico(u, env), eventos: await leerLista(env, u.sub) });
         }
         if (ruta === "/api/perfil" && req.method === "PUT") {
           const cuerpo = await req.json().catch(() => ({}));
@@ -593,7 +849,7 @@ export default {
           const slug = u.slug && slugDe(u.nombre) === base ? u.slug : await slugLibre(env, u.sub, base);
           await env.DB.prepare("UPDATE users SET nombre = ?, slug = ?, instagram = ?, whatsapp = ? WHERE sub = ?")
             .bind(nombre, slug, instagram || null, whatsapp || null, u.sub).run();
-          return json(env, { ok: true, usuario: { email: u.email, nombre, slug, instagram, whatsapp } });
+          return json(env, { ok: true, usuario: { email: u.email, nombre, slug, link: linkDe(env, slug), instagram, whatsapp } });
         }
         if (ruta === "/api/eventos" && req.method === "PUT") {
           const cuerpo = await req.json().catch(() => ({}));
@@ -608,10 +864,29 @@ export default {
           await guardarLista(env, u.sub, lista);
           return json(env, { ok: true, cantidad: lista.length });
         }
+        if (ruta === "/api/traspaso") {
+          if (req.method === "PUT") {
+            const texto = limpiarTraspaso((await req.json().catch(() => ({}))).datos);
+            if (!texto) return json(env, { ok: false, error: "datos" }, 400);
+            await env.DB.prepare("INSERT INTO traspasos (sub, datos, creado) VALUES (?, ?, ?) ON CONFLICT(sub) DO UPDATE SET datos = excluded.datos, creado = excluded.creado")
+              .bind(u.sub, texto, Date.now()).run();
+            return json(env, { ok: true });
+          }
+          if (req.method === "GET") {
+            const f = await env.DB.prepare("SELECT datos FROM traspasos WHERE sub = ? AND creado > ?").bind(u.sub, Date.now() - 30 * 24 * HORA_MS).first();
+            return json(env, { ok: true, datos: f ? JSON.parse(f.datos) : null });
+          }
+          if (req.method === "DELETE") {
+            await env.DB.prepare("DELETE FROM traspasos WHERE sub = ?").bind(u.sub).run();
+            return json(env, { ok: true });
+          }
+        }
         if (ruta === "/api/cuenta" && req.method === "DELETE") {
-          // the RRPP deletes everything stored about them: events, sessions and account
+          // the RRPP deletes everything stored about them: events, sessions, pending codes and account
           await env.DB.batch([
             env.DB.prepare("DELETE FROM eventos WHERE sub = ?").bind(u.sub),
+            env.DB.prepare("DELETE FROM traspasos WHERE sub = ?").bind(u.sub),
+            env.DB.prepare("DELETE FROM codigos WHERE email = ?").bind(u.email),
             env.DB.prepare("DELETE FROM sessions WHERE sub = ?").bind(u.sub),
             env.DB.prepare("DELETE FROM users WHERE sub = ?").bind(u.sub)
           ]);
@@ -625,9 +900,14 @@ export default {
         return json(env, { ok: false, error: "ruta" }, 404);
       }
 
-      const m = ruta.match(/^\/([a-z0-9-]{3,40})\/?$/);
-      if (m && req.method === "GET" && !RESERVADOS.has(m[1])) {
-        const u = await env.DB.prepare("SELECT sub, instagram, whatsapp FROM users WHERE slug = ?").bind(m[1]).first();
+      if (ruta === "/robots.txt") return new Response("User-agent: *\nDisallow: /api/\nDisallow: /lector\n", { headers: { "Content-Type": "text/plain" } });
+
+      // ----- public page of a RRPP: /eventos/nico-capello (or ?id=… when two RRPPs share a name) -----
+      const pub = ruta.match(/^\/eventos\/([a-z0-9-]{3,40})\/?$/);
+      if (pub && req.method === "GET") {
+        const id = (url.searchParams.get("id") || "").toLowerCase();
+        if (id && !/^[a-z0-9]{2,8}$/.test(id)) return pagina404();
+        const u = await env.DB.prepare("SELECT sub, instagram, whatsapp FROM users WHERE slug = ?").bind(id ? pub[1] + "--" + id : pub[1]).first();
         if (!u) return pagina404();
         const hoy = hoyAR();
         const lista = (await leerLista(env, u.sub))
@@ -640,7 +920,19 @@ export default {
           "Content-Security-Policy": "default-src 'none'; img-src https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'nonce-" + nonce + "'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         }) });
       }
-      if (ruta === "/robots.txt") return new Response("User-agent: *\nDisallow: /api/\n", { headers: { "Content-Type": "text/plain" } });
+
+      // ----- the RRPP app at the root of the site -----
+      if (url.hostname === host && req.method === "GET") {
+        if (ruta === "/") return servirApp(env, "/index.html");
+        if (ARCHIVOS_APP.has(ruta)) return servirApp(env, ruta);
+      }
+
+      // links shared before the move (…workers.dev/nico-capello or /nico-capello) go to the new address
+      const viejo = ruta.match(/^\/([a-z0-9-]{3,40})\/?$/);
+      if (viejo && req.method === "GET" && !RESERVADOS.has(viejo[1])) {
+        const u = await env.DB.prepare("SELECT slug FROM users WHERE slug = ?").bind(viejo[1]).first();
+        if (u) return Response.redirect(linkDe(env, u.slug), 301);
+      }
       return pagina404();
     } catch (e) {
       return json(env, { ok: false, error: "servidor" }, 500);

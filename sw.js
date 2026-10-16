@@ -1,6 +1,6 @@
 // Offline support: the app shell is cached; same-origin requests go network-first so updates arrive,
 // Google Fonts and Bombo flyers are cache-first (flyers live in their own cache that survives updates).
-var CACHE = "comisiones-v45";
+var CACHE = "comisiones-v46";
 var FLYERS = "comisiones-flyers";
 var SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
@@ -20,6 +20,8 @@ self.addEventListener("fetch", function (e) {
   var url = new URL(req.url);
 
   if (url.origin === self.location.origin) {
+    // the API, the event reader and the public RRPP pages always go straight to the server
+    if (/^\/(api\/|lector|eventos\/)/.test(url.pathname)) return;
     e.respondWith(fetch(req).then(function (res) {
       if (res.ok) { var copy = res.clone(); caches.open(CACHE).then(function (c) { c.put(req, copy); }); }
       return res;

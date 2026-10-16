@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com https://*.googleusercontent.com; connect-src 'self' https://eventos.nicolascapelloubeda.workers.dev https://accounts.google.com/gsi/ https://fonts.googleapis.com https://fonts.gstatic.com https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com; frame-src https://accounts.google.com/gsi/; base-uri 'self'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com https://*.googleusercontent.com; connect-src 'self' https://bpmtickets.com.ar https://eventos.nicolascapelloubeda.workers.dev https://accounts.google.com/gsi/ https://fonts.googleapis.com https://fonts.gstatic.com https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com; frame-src https://accounts.google.com/gsi/; base-uri 'self'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#100e15">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -307,6 +307,26 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .actions .btn:first-child { flex: 1; }
 
+/* Sign in / sign up */
+.auth { gap: 14px; }
+.auth h2 { font-size: 22px; }
+.auth p { margin: 0; color: var(--muted); }
+.auth p b { color: var(--fg); }
+.auth-form { display: flex; flex-direction: column; gap: 12px; }
+.auth-o { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.auth-o::before, .auth-o::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.auth .link-btn { font-size: 14px; align-self: flex-start; }
+.auth-pie { font-size: 14px; }
+.clave-row { position: relative; }
+.clave-row .input { padding-right: 84px; }
+.clave-row .link-btn { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); }
+.input.codigo { font-size: 26px; letter-spacing: .45em; text-align: center; font-variant-numeric: tabular-nums; }
+.auth-legal { text-align: center; }
+.auth-legal a { color: var(--accent); }
+.oculto { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.mudanza { border-color: var(--accent); }
+.mudanza p { margin: 0; color: var(--muted); }
+.mudanza a.btn { display: flex; align-items: center; justify-content: center; text-decoration: none; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 14px; font-weight: 600; z-index: 30; max-width: calc(100% - 32px); }
 
 @media (max-width: 360px) { .big { font-size: 38px; } .grid2 { grid-template-columns: 1fr; } }
@@ -368,7 +388,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // Persisted data: { pct: number|null, eventos: [...], productoras: [{id, nombre, factura}], ultimaCopia: ISO|null }
   var data = { pct: null, eventos: [], productoras: [], cartelera: [], ultimaCopia: null };
   // Event reader for Bombo, Venti, Planout and Passline (server /lector)
-  var API_URL = "https://eventos.nicolascapelloubeda.workers.dev";
+  // The app lives at bpmtickets.com.ar (same server as the API); the old GitHub Pages copy only helps carry data over
+  var SITIO = "https://bpmtickets.com.ar";
+  var EN_SITIO = location.origin === SITIO;
+  var API_URL = EN_SITIO ? "" : SITIO;
   var LECTOR_URL = API_URL + "/lector";
   var GOOGLE_CLIENT_ID = "174152864828-tbk0qlbnm28kak0lvbum8mvi296n2mtj.apps.googleusercontent.com";
   // RRPP account lives apart from the data so backups never carry the session token
@@ -379,7 +402,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 45;
+  var VERSION = 46;
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
@@ -558,6 +581,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   // ---------- render ----------
   function render() {
+    // bpmtickets.com.ar asks to sign in first
+    var pideEntrar = EN_SITIO && !cuenta;
+    document.querySelector(".nav").hidden = pideEntrar;
+    if (pideEntrar) { $fab.hidden = true; $main.innerHTML = viewAuth(); montarBotonesGoogle(); return; }
     $fab.hidden = ui.view === "ajustes";
     var enCartel = ui.view === "cartelera";
     $fab.setAttribute("data-action", enCartel ? "cartel-nuevo" : "new");
@@ -576,6 +603,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var tabAjustes = document.querySelector('.nav [data-view="ajustes"]');
     if (tabAjustes) tabAjustes.classList.toggle("aviso", copiaPendiente());
 
+    if (!EN_SITIO) html += bannerMudanza();
     if (ui.view === "fechas") html += viewFechas();
     else if (ui.view === "cartelera") html += viewCartelera();
     else if (ui.view === "rendimiento") html += viewRendimiento();
@@ -934,7 +962,13 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   function guardarCuenta() {
     try { if (cuenta) localStorage.setItem(CUENTA_KEY, JSON.stringify(cuenta)); else localStorage.removeItem(CUENTA_KEY); } catch (e) { /* ignore */ }
   }
-  function linkPublico() { return cuenta && cuenta.slug ? API_URL + "/" + cuenta.slug : ""; }
+  // same rule as the server: a repeated name is stored as "nombre--id" and shared as /eventos/nombre?id=id
+  function linkDeSlug(slug) {
+    var i = slug.indexOf("--");
+    return SITIO + "/eventos/" + (i > 0 ? slug.slice(0, i) + "?id=" + slug.slice(i + 2) : slug);
+  }
+  function linkPublico() { return cuenta && cuenta.slug ? (cuenta.link || linkDeSlug(cuenta.slug)) : ""; }
+  function textoLinkPrevio(nombre) { return "bpmtickets.com.ar/eventos/" + (slugDe(nombre) || "tu-nombre"); }
   function slugDe(t) {
     return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
       .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30).replace(/-+$/g, "");
@@ -946,7 +980,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     return fetch(API_URL + ruta, { method: opciones.method || "GET", headers: headers, body: opciones.body ? JSON.stringify(opciones.body) : undefined })
       .then(function (r) {
         return r.json().catch(function () { return { ok: false, error: "red" }; }).then(function (j) {
-          if (r.status === 401 && j.error === "sesion") { cuenta = null; guardarCuenta(); render(); toast("Tu sesión venció. Entrá de nuevo con Google."); }
+          if (r.status === 401 && j.error === "sesion") { cuenta = null; guardarCuenta(); render(); toast("Tu sesión venció. Entrá de nuevo."); }
           if (!j.ok) throw j;
           return j;
         });
@@ -1021,7 +1055,163 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { /* ignore */ }
       }
       render();
+      if (EN_SITIO) traerTraspaso();
     }, function () { /* offline: keep the local copy */ });
+  }
+
+  // Data carried over from the old app (GitHub Pages): added once, then removed from the server
+  function traerTraspaso() {
+    return api("/api/traspaso").then(function (j) {
+      var p = j.datos && normalizarCopia(j.datos);
+      if (!p) return;
+      var nuevos;
+      if (!data.eventos.length) {
+        // nothing here yet: take the old app's productoras and % as they were
+        if (p.productoras && p.productoras.length) data.productoras = p.productoras;
+        if (p.pct != null) data.pct = p.pct;
+        nuevos = p.eventos;
+      } else {
+        var ids = {}, prods = {}, mapa = {};
+        data.eventos.forEach(function (e) { ids[e.id] = true; });
+        data.productoras.forEach(function (x) { prods[x.id] = true; });
+        (p.productoras || []).forEach(function (x) {
+          if (prods[x.id]) return;
+          var igual = prodPorNombre(x.nombre);
+          if (igual) mapa[x.id] = igual.id; else data.productoras.push(x);
+        });
+        nuevos = p.eventos.filter(function (e) { return !ids[e.id]; });
+        nuevos.forEach(function (e) { if (e.productoraId && mapa[e.productoraId]) e.productoraId = mapa[e.productoraId]; });
+        if (data.pct == null && p.pct != null) data.pct = p.pct;
+      }
+      data.eventos = data.eventos.concat(nuevos);
+      if (!persist()) return;
+      api("/api/traspaso", { method: "DELETE" }).catch(function () {});
+      render();
+      toast(nuevos.length ? "Trajimos " + nuevos.length + " eventos de tu app anterior" : "Tus datos de la app anterior ya están acá");
+    }, function () {});
+  }
+  // What the old app sends to the new site: everything except the event list (that one is already on the server)
+  function datosParaTraspaso() {
+    return { app: "comisiones-rrpp", version: 2, exportado: new Date().toISOString(), pct: data.pct, productoras: data.productoras, eventos: data.eventos };
+  }
+  function bannerMudanza() {
+    if (ui.mudanza === "listo") {
+      return '<section class="card mudanza"><h2>¡Listo! Tus datos ya viajaron</h2>' +
+        "<p>Abrí <b>bpmtickets.com.ar</b> y entrá con tu misma cuenta (" + esc(cuenta ? cuenta.email : "") + "). Tus eventos, ventas, productoras y tu % van a aparecer solos. Después agregala a tu pantalla de inicio y borrá este ícono.</p>" +
+        '<a class="btn" href="' + SITIO + '" target="_blank" rel="noopener">Abrir bpmtickets.com.ar</a></section>';
+    }
+    return '<section class="card mudanza"><h2>BPM Tickets se mudó a bpmtickets.com.ar</h2>' +
+      (cuenta
+        ? "<p>Tocá el botón para llevar tus eventos, ventas, productoras y tu % a la nueva web. Después entrás allá con tu misma cuenta.</p>" +
+          '<button class="btn" type="button" data-action="mudanza"' + (ui.mudanza === "subiendo" ? " disabled" : "") + ">" + (ui.mudanza === "subiendo" ? "Llevando tus datos…" : "Llevar mis datos") + "</button>"
+        : "<p>Para llevar tus datos, primero entrá con Google en la pestaña Eventos. Si no tenés nada cargado, abrí directamente la nueva web.</p>" +
+          '<a class="btn ghost" href="' + SITIO + '" target="_blank" rel="noopener">Abrir bpmtickets.com.ar</a>') +
+      "</section>";
+  }
+
+  // ---------- sign in / sign up screen (bpmtickets.com.ar) ----------
+  var auth = { modo: "entrar", email: "", cargando: false };
+  var ERRORES_AUTH = {
+    email: "Revisá el mail: parece que está mal escrito.",
+    clave: "La contraseña tiene que tener al menos 8 caracteres.",
+    existe: "Ya hay una cuenta con ese mail. Entrá, o tocá ¿Olvidaste tu contraseña?",
+    credenciales: "Mail o contraseña incorrectos. Si siempre entraste con Google, usá el botón de Google o creá una contraseña con ¿Olvidaste tu contraseña?",
+    bloqueado: "Demasiados intentos. Esperá 15 minutos y probá de nuevo.",
+    limite: "Pediste muchos códigos. Esperá un rato y probá de nuevo.",
+    espera: "Esperá un minuto antes de pedir otro código.",
+    codigo: "El código no es correcto. Revisalo y probá de nuevo.",
+    "codigo-vencido": "El código venció. Pedí uno nuevo.",
+    "codigo-intentos": "Demasiados intentos con este código. Pedí uno nuevo.",
+    "mail-config": "Todavía no podemos mandar mails. Por ahora entrá con Google.",
+    mail: "No pudimos mandar el mail. Probá de nuevo en un rato.",
+    red: "Sin conexión. Revisá tu internet y probá de nuevo."
+  };
+  function viewAuth() {
+    var m = auth.modo, h = '<section class="card auth">';
+    var mail = '<div class="field"><label for="auth-email">Mail</label><input id="auth-email" class="input" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false" value="' + esc(auth.email) + '"></div>';
+    var mailOculto = '<input class="oculto" type="email" autocomplete="username" tabindex="-1" aria-hidden="true" value="' + esc(auth.email) + '">';
+    var clave = function (etiqueta, nueva) {
+      return '<div class="field"><label for="auth-clave">' + etiqueta + '</label><div class="clave-row"><input id="auth-clave" class="input" type="password" autocomplete="' + (nueva ? "new-password" : "current-password") + '" maxlength="128">' +
+        '<button type="button" class="link-btn" data-action="auth-ver">Ver</button></div></div>';
+    };
+    var codigo = '<div class="field"><label for="auth-codigo">Código de 6 números</label><input id="auth-codigo" class="input codigo" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></div>';
+    var google = '<div class="g-btn"></div><div class="auth-o">o con tu mail</div>';
+    if (m === "entrar") {
+      h += "<h2>Entrá a tu cuenta</h2><p>Cargá tus eventos y compartí tu página con tus clientes.</p>" + google +
+        '<form class="auth-form" data-auth="entrar" novalidate>' + mail + clave("Contraseña", false) +
+        '<div class="err" id="auth-err"></div><button class="btn" type="submit">Entrar</button></form>' +
+        '<button type="button" class="link-btn" data-action="auth-modo" data-modo="olvide">¿Olvidaste tu contraseña?</button>' +
+        '<p class="auth-pie">¿No tenés cuenta? <button type="button" class="link-btn" data-action="auth-modo" data-modo="registro">Registrate</button></p>';
+    } else if (m === "registro") {
+      h += "<h2>Creá tu cuenta</h2><p>Te mandamos un código por mail para confirmarla.</p>" + google +
+        '<form class="auth-form" data-auth="registro" novalidate>' + mail + clave("Contraseña", true) +
+        '<p class="hint">Mínimo 8 caracteres.</p><div class="err" id="auth-err"></div><button class="btn" type="submit">Crear cuenta</button></form>' +
+        '<p class="auth-pie">¿Ya tenés cuenta? <button type="button" class="link-btn" data-action="auth-modo" data-modo="entrar">Entrá</button></p>';
+    } else if (m === "codigo") {
+      h += "<h2>Revisá tu mail</h2><p>Te mandamos un código de 6 números a <b>" + esc(auth.email) + "</b>. Puede tardar un minuto: fijate también en Spam o Promociones.</p>" +
+        '<form class="auth-form" data-auth="codigo" novalidate>' + mailOculto + codigo + '<div class="err" id="auth-err"></div><button class="btn" type="submit">Confirmar</button></form>' +
+        '<div class="row"><button type="button" class="link-btn" data-action="auth-reenviar">Reenviar código</button>' +
+        '<button type="button" class="link-btn" data-action="auth-modo" data-modo="registro">Cambiar mail</button></div>';
+    } else if (m === "olvide") {
+      h += "<h2>Recuperá tu contraseña</h2><p>Escribí el mail de tu cuenta y te mandamos un código para elegir una contraseña nueva. Si siempre entraste con Google, así también podés crearte una.</p>" +
+        '<form class="auth-form" data-auth="olvide" novalidate>' + mail + '<div class="err" id="auth-err"></div><button class="btn" type="submit">Enviar código</button></form>' +
+        '<p class="auth-pie"><button type="button" class="link-btn" data-action="auth-modo" data-modo="entrar">Volver</button></p>';
+    } else {
+      h += "<h2>Elegí una contraseña nueva</h2><p>Si <b>" + esc(auth.email) + "</b> tiene una cuenta, le llegó un código de 6 números. Fijate también en Spam o Promociones.</p>" +
+        '<form class="auth-form" data-auth="restablecer" novalidate>' + mailOculto + codigo + clave("Contraseña nueva", true) +
+        '<p class="hint">Mínimo 8 caracteres.</p><div class="err" id="auth-err"></div><button class="btn" type="submit">Guardar y entrar</button></form>' +
+        '<div class="row"><button type="button" class="link-btn" data-action="auth-reenviar">Reenviar código</button>' +
+        '<button type="button" class="link-btn" data-action="auth-modo" data-modo="entrar">Volver</button></div>';
+    }
+    return '<div class="stack">' + h + '</section><p class="hint auth-legal">Al entrar aceptás la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a>.</p></div>';
+  }
+  function errorAuth(e) {
+    var el = document.getElementById("auth-err");
+    if (el) el.textContent = ERRORES_AUTH[e && e.error] || "Algo salió mal. Probá de nuevo.";
+    auth.cargando = false;
+    var b = document.querySelector(".auth-form .btn");
+    if (b) b.disabled = false;
+  }
+  function pedirAuth(ruta, cuerpo) {
+    return fetch(API_URL + ruta, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, error: "red" }; }); }, function () { return { ok: false, error: "red" }; })
+      .then(function (j) { if (!j.ok) throw j; return j; });
+  }
+  function enfocar(id) { setTimeout(function () { var el = document.getElementById(id); if (el) el.focus(); }, 60); }
+  function cambiarModoAuth(modo) {
+    var em = document.getElementById("auth-email");
+    if (em && em.value.trim()) auth.email = em.value.trim().toLowerCase();
+    auth.modo = modo; auth.cargando = false;
+    render();
+  }
+  function enviarAuth(modo, f) {
+    if (auth.cargando) return;
+    var val = function (id) { var el = document.getElementById(id); return el ? el.value : ""; };
+    var email = (val("auth-email").trim() || auth.email).toLowerCase();
+    var clave = val("auth-clave"), codigo = val("auth-codigo").replace(/\D/g, "");
+    if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/.test(email)) return errorAuth({ error: "email" });
+    if ((modo === "registro" || modo === "restablecer") && clave.length < 8) return errorAuth({ error: "clave" });
+    if (modo === "entrar" && !clave) return errorAuth({ error: "credenciales" });
+    if ((modo === "codigo" || modo === "restablecer") && codigo.length !== 6) return errorAuth({ error: "codigo" });
+    auth.email = email; auth.cargando = true;
+    var b = f.querySelector(".btn"); if (b) b.disabled = true;
+    var el = document.getElementById("auth-err"); if (el) el.textContent = "";
+    var p;
+    if (modo === "entrar") p = pedirAuth("/api/entrar", { email: email, clave: clave }).then(entrarCon);
+    else if (modo === "registro") p = pedirAuth("/api/registro", { email: email, clave: clave }).then(function () { cambiarModoAuth("codigo"); enfocar("auth-codigo"); });
+    else if (modo === "codigo") p = pedirAuth("/api/verificar", { email: email, codigo: codigo }).then(entrarCon);
+    else if (modo === "olvide") p = pedirAuth("/api/olvide", { email: email }).then(function () { cambiarModoAuth("restablecer"); enfocar("auth-codigo"); });
+    else p = pedirAuth("/api/restablecer", { email: email, codigo: codigo, clave: clave }).then(entrarCon);
+    p.catch(errorAuth);
+  }
+  // Signed in (Google or mail): keep the session and bring the account's events
+  function entrarCon(j) {
+    cuenta = Object.assign({ token: j.token, sugerido: j.sugerido, sincronizado: false }, j.usuario);
+    guardarCuenta();
+    auth = { modo: "entrar", email: "", cargando: false };
+    render();
+    toast("Entraste como " + j.usuario.email);
+    return traerCuenta();
   }
 
   var gis = { cargando: false, listo: false };
@@ -1056,18 +1246,18 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (!j.ok) throw j;
-        cuenta = Object.assign({ token: j.token, sugerido: j.sugerido, sincronizado: false }, j.usuario);
-        guardarCuenta();
-        toast("Entraste como " + j.usuario.email);
-        return traerCuenta();
+        return entrarCon(j);
       })
       .catch(function () { toast("No pude entrar con Google. Probá de nuevo."); });
   }
   function salir() {
     var t = cuenta;
-    cuenta = null; guardarCuenta(); render();
+    cuenta = null; guardarCuenta();
+    // on the shared site the event list stays only in the account, so another RRPP on this device starts clean
+    if (EN_SITIO) { data.cartelera = []; sync.ultimo = null; try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { /* ignore */ } }
+    render();
     if (t) fetch(API_URL + "/api/logout", { method: "POST", headers: { Authorization: "Bearer " + t.token } }).catch(function () {});
-    toast("Cerraste sesión. Tus eventos quedan en este celular.");
+    toast(EN_SITIO ? "Cerraste sesión." : "Cerraste sesión. Tus eventos quedan en este celular.");
   }
   function guardarPerfil(nombreId, errId) {
     var nombre = document.getElementById(nombreId).value.trim();
@@ -1113,9 +1303,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     }
     if (!cuenta.slug) {
       return '<section class="card cuenta"><h2>Elegí tu nombre público</h2>' +
-        "<p>Va en tu link. Por ejemplo, con <b>Nico Capello</b> tu link es <b>…/nico-capello</b>. Si otro RRPP ya usa ese nombre, tu link suma un código corto al final para que sea único.</p>" +
+        "<p>Va en tu link. Por ejemplo, con <b>Nico Capello</b> tu link es <b>bpmtickets.com.ar/eventos/nico-capello</b>. Si otro RRPP ya usa ese nombre, tu link suma un código al final (<b>?id=…</b>) para que no se confundan.</p>" +
         '<div class="field"><label for="perfil-nombre">Nombre público</label><input id="perfil-nombre" class="input" type="text" autocomplete="off" value="' + esc(cuenta.nombre || "") + '" placeholder="' + esc(cuenta.sugerido || "Tu nombre") + '"></div>' +
-        '<p class="hint" id="perfil-preview">' + esc(API_URL.replace("https://", "") + "/" + (slugDe(cuenta.nombre || cuenta.sugerido) || "tu-nombre")) + "</p>" +
+        '<p class="hint" id="perfil-preview">' + esc(textoLinkPrevio(cuenta.nombre || cuenta.sugerido)) + "</p>" +
         '<div class="err" id="perfil-err"></div>' +
         '<div class="row"><button class="btn" type="button" data-action="perfil-guardar">Crear mi link</button></div></section>';
     }
@@ -1811,8 +2001,20 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var reader = new FileReader();
     reader.onload = function () {
       try {
-        var d = JSON.parse(reader.result);
-        if (!d || d.app !== "comisiones-rrpp" || !Array.isArray(d.eventos)) throw new Error("formato");
+        var p = normalizarCopia(JSON.parse(reader.result));
+        if (!p) throw new Error("formato");
+        ui.pendingImport = p;
+        render();
+      } catch (e) {
+        if (err) err.textContent = "Ese archivo no es una copia de esta app. Elegí el archivo de copia (.json) que guardaste.";
+      }
+    };
+    reader.onerror = function () { if (err) err.textContent = "No se pudo leer el archivo."; };
+    reader.readAsText(file);
+  }
+  // Backup file or data carried from the old app -> clean lists ready to use
+  function normalizarCopia(d) {
+    if (!d || d.app !== "comisiones-rrpp" || !Array.isArray(d.eventos)) return null;
         var eventos = d.eventos.filter(function (e) { return e && typeof e.nombre === "string" && partes(e.fecha); }).map(function (e) {
           return { id: String(e.id || nuevoId()), nombre: e.nombre, fecha: e.fecha, entradas: Number(e.entradas) || 0, facturado: Number(e.facturado) || 0,
             cobrado: !!e.cobrado, fechaCobro: e.cobrado ? (e.fechaCobro || null) : null,
@@ -1826,14 +2028,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         });
         var productoras = Array.isArray(d.productoras) ? d.productoras.filter(function (p) { return p && p.id && typeof p.nombre === "string"; })
           .map(function (p) { return { id: String(p.id), nombre: p.nombre, factura: !!p.factura, valorFree: typeof p.valorFree === "number" ? p.valorFree : null }; }) : null;
-        ui.pendingImport = { eventos: eventos, productoras: productoras, cartelera: Array.isArray(d.cartelera) ? d.cartelera : null, pct: typeof d.pct === "number" ? d.pct : null, exportado: d.exportado || null };
-        render();
-      } catch (e) {
-        if (err) err.textContent = "Ese archivo no es una copia de esta app. Elegí el archivo de copia (.json) que guardaste.";
-      }
-    };
-    reader.onerror = function () { if (err) err.textContent = "No se pudo leer el archivo."; };
-    reader.readAsText(file);
+    return { eventos: eventos, productoras: productoras, cartelera: Array.isArray(d.cartelera) ? d.cartelera : null, pct: typeof d.pct === "number" ? d.pct : null, exportado: d.exportado || null };
   }
 
   function confirmarImport() {
@@ -1914,6 +2109,20 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       cartelSheet = { fase: "manual", datos: Object.assign({}, cartelSheet.datos || {}, { link: lk }) };
       pintarCartelSheet();
     }
+    else if (a === "auth-modo") cambiarModoAuth(t.getAttribute("data-modo"));
+    else if (a === "auth-ver") {
+      var ic = document.getElementById("auth-clave");
+      if (ic) { ic.type = ic.type === "password" ? "text" : "password"; t.textContent = ic.type === "password" ? "Ver" : "Ocultar"; }
+    }
+    else if (a === "auth-reenviar") {
+      pedirAuth("/api/reenviar", { email: auth.email, tipo: auth.modo === "restablecer" ? "olvide" : "registro" })
+        .then(function () { toast("Te mandamos un código nuevo"); }, errorAuth);
+    }
+    else if (a === "mudanza") {
+      ui.mudanza = "subiendo"; render();
+      api("/api/traspaso", { method: "PUT", body: { datos: datosParaTraspaso() } }).then(function () { ui.mudanza = "listo"; render(); window.scrollTo(0, 0); },
+        function () { ui.mudanza = ""; render(); toast("No se pudo. Revisá tu conexión y probá de nuevo."); });
+    }
     else if (a === "c-pegar") {
       var ci = document.getElementById("c-link");
       var sinPermiso = function () {
@@ -1966,7 +2175,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   });
   document.addEventListener("submit", function (e) {
     e.preventDefault();
-    if (e.target.id === "ev-form") saveSheet();
+    if (e.target.hasAttribute("data-auth")) enviarAuth(e.target.getAttribute("data-auth"), e.target);
+    else if (e.target.id === "ev-form") saveSheet();
     else if (e.target.id === "cartel-form") { if (cartelSheet.fase === "link") buscarCartel(); else if (cartelSheet.fase !== "buscando") guardarCartel(); }
     else if (e.target.id === "pe-form") guardarPctFecha();
     else if (e.target.id === "pct-form") savePct();
@@ -1992,7 +2202,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (e.target.id === "pe-input") previewPct();
     if (e.target.id === "perfil-nombre") {
       var pv = document.getElementById("perfil-preview");
-      if (pv) pv.textContent = API_URL.replace("https://", "") + "/" + (slugDe(e.target.value) || "tu-nombre");
+      if (pv) pv.textContent = textoLinkPrevio(e.target.value);
     }
   });
   document.addEventListener("change", function (e) {
