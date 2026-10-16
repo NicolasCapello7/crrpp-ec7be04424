@@ -72,6 +72,32 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .brand .logo { width: 38px; height: auto; flex: 0 0 auto; }
 .brand > div { white-space: nowrap; font-size: clamp(22px, 6.6vw, 30px); }
 .top .fab { white-space: nowrap; }
+.top-der { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.ayuda { flex: 0 0 auto; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: transparent; color: var(--fg); font-weight: 700; font-size: 16px; padding: 0; display: grid; place-items: center; }
+/* phones: logo, "?" and the main button share one row; the narrowest ones keep only the logo */
+@media (max-width: 420px) {
+  .top { gap: 8px; }
+  .brand { gap: 8px; }
+  .brand .logo { width: 30px; }
+  .brand > div { font-size: 21px; }
+  .top-der { gap: 6px; }
+  .ayuda { width: 32px; height: 32px; font-size: 15px; }
+  .top .fab { padding: 9px 12px; gap: 5px; font-size: 13.5px; }
+}
+@media (max-width: 350px) { .brand > div { display: none; } }
+
+/* Tutorial: the screen dims, the part being explained stays lit and a bubble explains it */
+.tour { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 40; }
+.tour-velo { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+.tour-velo.oscuro { background: rgba(8, 6, 12, .72); }
+.tour-hueco { position: fixed; border-radius: 14px; box-shadow: 0 0 0 9999px rgba(8, 6, 12, .72); outline: 2px solid var(--accent); pointer-events: none; }
+.tour-globo { position: fixed; width: min(340px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--accent); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, .45); }
+.tour-globo h3 { margin: 0; font-size: 17px; }
+.tour-globo p { margin: 0; color: var(--muted); font-size: 14.5px; line-height: 1.45; }
+.tour-globo p b { color: var(--fg); }
+.tour-pie { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.tour-pie .paso { font-size: 12px; color: var(--muted); margin-right: auto; font-variant-numeric: tabular-nums; }
+.tour-pie .btn { min-height: 40px; padding: 8px 14px; font-size: 14px; }
 .conn { font-size: 12px; color: var(--muted); }
 
 .stack { display: flex; flex-direction: column; gap: 18px; }
@@ -343,10 +369,13 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 <div class="app">
   <div class="top">
     <div class="brand"><svg class="logo" viewBox="0 0 90 56" aria-hidden="true"><path d="M8 0h74a8 8 0 0 1 8 8v12.4a7.6 7.6 0 0 0 0 15.2V48a8 8 0 0 1-8 8H8a8 8 0 0 1-8-8V35.6a7.6 7.6 0 0 0 0-15.2V8a8 8 0 0 1 8-8z" fill="#39ff7f"/><polyline points="17,28 24,28 31,10 41,46 49,17 55,28 73,28" fill="none" stroke="#100e15" stroke-width="6.2" stroke-linecap="round" stroke-linejoin="round"/></svg><div>BPM <span>Tickets</span></div></div>
-    <button class="fab" id="fab" type="button" data-action="new">
-      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
-      Nuevo evento
-    </button>
+    <div class="top-der">
+      <button class="ayuda" id="ayuda" type="button" data-action="tutorial" aria-label="Ver cómo funciona esta sección">?</button>
+      <button class="fab" id="fab" type="button" data-action="new">
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+        Nuevo evento
+      </button>
+    </div>
   </div>
   <main id="main"></main>
 </div>
@@ -376,6 +405,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
 <div id="sheet-root"></div>
 <div id="toast-root"></div>
+<div id="tour-root"></div>
 
 <script>
 (function () {
@@ -401,12 +431,14 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var storageOk = true;
-  var VERSION = 52;
+  var VERSION = 53;
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
   var $main = document.getElementById("main");
   var $fab = document.getElementById("fab");
+  var $ayuda = document.getElementById("ayuda");
+  var $tourRoot = document.getElementById("tour-root");
   var $sheetRoot = document.getElementById("sheet-root");
   var $toastRoot = document.getElementById("toast-root");
 
@@ -599,7 +631,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     // bpmtickets.com.ar asks to sign in first
     var pideEntrar = EN_SITIO && !cuenta;
     document.querySelector(".nav").hidden = pideEntrar;
-    if (pideEntrar) { $fab.hidden = true; $main.innerHTML = viewAuth(); montarBotonesGoogle(); return; }
+    $ayuda.hidden = pideEntrar;
+    if (pideEntrar) { $fab.hidden = true; cerrarTutorial(); $main.innerHTML = viewAuth(); montarBotonesGoogle(); return; }
     $fab.hidden = ui.view === "ajustes" || ui.view === "rendimiento";
     var enCartel = ui.view === "cartelera";
     $fab.setAttribute("data-action", enCartel ? "cartel-nuevo" : "new");
@@ -620,6 +653,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (keep != null) { var np = document.getElementById("pct-input"); np.value = keep; np.focus(); }
     ajustarChips();
     montarBotonesGoogle();
+    if (tuto.pasos) posicionarTutorial(); else revisarTutorial();
   }
 
   function htmlVista() {
@@ -879,7 +913,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   }
 
   function viewAjustes() {
-    var h = cuentaCard(true) + '<section class="card"><h2>Tu comisión</h2>' +
+    var h = cuentaCard(true) + '<section class="card" id="card-comision"><h2>Tu comisión</h2>' +
       "<p>Porcentaje que cobrás sobre el monto facturado de cada evento.</p>" +
       '<form id="pct-form" class="row" novalidate>' +
       '<div class="pct-wrap"><input id="pct-input" class="input" type="text" inputmode="decimal" aria-label="Porcentaje de comisión" value="' +
@@ -909,6 +943,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     }
     h += '<div class="err" id="import-err"></div></section>';
 
+
+    h += '<section class="card"><h2>¿Cómo funciona?</h2><p>Tocá <b>?</b> arriba para ver la explicación de la sección en la que estás, o mirá el recorrido completo desde el principio.</p>' +
+      '<div class="row"><button class="btn ghost" type="button" data-action="tutorial-reiniciar">Ver el tutorial de nuevo</button></div></section>';
 
     h += '<section class="card"><h2>Instalar en tu iPhone</h2><ol>' +
       "<li>Abrí este link en <b>Safari</b>.</li>" +
@@ -1777,6 +1814,114 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   }
 
 
+  // ---------- tutorial: popups that explain each section the first time it opens (again from "?") ----------
+  var TUTO_KEY = "comisiones-rrpp-tutorial";
+  var tuto = { pasos: null, i: 0, vista: null };
+  function tutoVistos() { try { return JSON.parse(localStorage.getItem(TUTO_KEY) || "{}") || {}; } catch (e) { return {}; } }
+  function tutoMarcar(v) { var t = tutoVistos(); t[v] = true; try { localStorage.setItem(TUTO_KEY, JSON.stringify(t)); } catch (e) { /* ignore */ } }
+  // Steps of each section: sel = what gets lit (steps whose element isn't on screen are skipped); no sel = centered
+  function pasosTutorial(v) {
+    if (v === "cartelera") return [
+      { titulo: "Eventos", texto: "Acá armás la cartelera de los eventos que vendés. Todo lo que cargues se muestra en <b>tu página pública</b>, para tus clientes." },
+      { sel: ".card.cuenta", titulo: "Tu página", texto: cuenta && cuenta.slug
+        ? "Este es tu link. Compartilo en tu Instagram o por WhatsApp: tus clientes ven tus próximos eventos con los precios al día y compran con tu link."
+        : "Primero elegí tu <b>nombre público</b>: con él se arma el link que vas a compartir con tus clientes." },
+      { sel: "#fab", titulo: "Agregar un evento", texto: "Tocá <b>Agregar evento</b> y pegá el link de Bombo, Venti, Planout, Passline o Talk Tickets. La app arma la tarjeta sola con el flyer, la fecha y los precios. Si no tenés link, podés cargarlo a mano." },
+      { sel: ".cartel-list .cartel", titulo: "Tus eventos", texto: "Cada tarjeta muestra el precio actual de la entrada general y la VIP. Tocala para editarla; con <b>↻</b> actualizás los precios y con el <b>tacho</b> la eliminás." },
+      { sel: "#auto-estado", titulo: "Precios al día", texto: "Mientras tenés la app abierta, los precios se actualizan solos cada 5 minutos. Tu página pública también se mantiene al día." },
+      { sel: '.nav [data-view="fechas"]', titulo: "Conectado con Mi Rendimiento", texto: "Cada evento que agregás acá también aparece en <b>Mi Rendimiento</b>, listo para que cargues tus ventas." }
+    ];
+    if (v === "fechas") return [
+      { sel: ".summary", titulo: "Lo que te deben", texto: "Arriba ves cuánto te deben todavía. Abajo, lo que ya cobraste y el total que generaste." },
+      { sel: "#fab", titulo: "Cargar un evento", texto: "Con <b>Nuevo evento</b> cargás el nombre, la fecha, las entradas vendidas y el monto facturado. La app calcula tu comisión sola." },
+      { sel: ".filtros-row", titulo: "Filtros", texto: "Mirá solo los pendientes, los facturados o los cobrados. Con el ícono de la derecha filtrás por fechas o por productora." },
+      { sel: ".list .tkt", titulo: "Cada evento", texto: "Tocá el evento para editar sus ventas o sumar frees. Tocá el <b>%</b> para cambiar la comisión solo de ese evento, y el botón para marcarlo facturado o cobrado." },
+      { titulo: "Facturar y cobrar", texto: "Si una productora pide factura, sus eventos pasan por <b>Facturada</b> antes de <b>Cobrada</b>. Eso se configura en <b>Ajustes → Mis productoras</b>." }
+    ];
+    if (v === "rendimiento") return data.eventos.length ? [
+      { sel: ".tiles", titulo: "Tus números", texto: "Eventos trabajados, entradas vendidas, facturado, comisión y promedios, todo junto." },
+      { sel: '[data-panel="rend"]', titulo: "Elegí el período", texto: "Mirá este mes, el mes pasado, los últimos 3 meses, el año o fechas exactas." },
+      { sel: ".rank", titulo: "Tus mejores eventos", texto: "Ordenalos por entradas vendidas o por monto facturado." },
+      { sel: ".table-wrap", titulo: "Por productora y por mes", texto: "Cuánto ganaste y cuánto te deben todavía, separado por productora y por mes." }
+    ] : [
+      { titulo: "Estadísticas", texto: "Cuando cargues eventos en <b>Mi Rendimiento</b>, acá vas a ver cuánto vendiste, tus mejores eventos y lo que ganaste por mes." }
+    ];
+    return [
+      { sel: ".card.cuenta", titulo: "Tu cuenta", texto: "Tu nombre público va en tu link. Sumá tu Instagram y tu WhatsApp para que tus clientes te escriban desde tu página." },
+      { sel: "#card-comision", titulo: "Tu comisión", texto: "El % que cobrás sobre lo facturado. Si un evento tiene otro %, cambialo desde su tarjeta en Mi Rendimiento." },
+      { sel: "#mis-productoras", titulo: "Tus productoras", texto: "Marcá cuáles piden factura y cuánto te pagan por cada free escaneado." },
+      { sel: ".acciones-cuenta", titulo: "Tu sesión", texto: "Al final podés cerrar sesión o eliminar tu cuenta." },
+      { sel: "#ayuda", titulo: "¿Dudas?", texto: (EN_SITIO ? "Todo lo que cargás se guarda solo en tu cuenta. " : "") + "Tocá <b>?</b> cuando quieras volver a ver cómo funciona cada sección." }
+    ];
+  }
+  // Opens on its own the first time a section is shown
+  function revisarTutorial() {
+    if (tutoVistos()[ui.view]) return;
+    clearTimeout(revisarTutorial.t);
+    var v = ui.view;
+    revisarTutorial.t = setTimeout(function () { if (ui.view === v && !tutoVistos()[v]) abrirTutorial(v); }, 600);
+  }
+  function abrirTutorial(v) {
+    if (tuto.pasos || $sheetRoot.innerHTML || (EN_SITIO && !cuenta)) return;
+    var pasos = pasosTutorial(v).filter(function (p) { return !p.sel || document.querySelector(p.sel); });
+    if (!pasos.length) return;
+    tutoMarcar(v);
+    tuto = { pasos: pasos, i: 0, vista: v };
+    pintarTutorial();
+  }
+  function cerrarTutorial() {
+    if (!tuto.pasos) return;
+    tuto = { pasos: null, i: 0, vista: null };
+    $tourRoot.innerHTML = "";
+  }
+  function pintarTutorial() {
+    if (!tuto.pasos) return;
+    var p = tuto.pasos[tuto.i], ultimo = tuto.i === tuto.pasos.length - 1;
+    var el = p.sel ? document.querySelector(p.sel) : null;
+    $tourRoot.innerHTML = '<div class="tour" role="dialog" aria-modal="true" aria-labelledby="tour-t" aria-describedby="tour-x">' +
+      '<div class="tour-velo' + (el ? "" : " oscuro") + '"></div>' + (el ? '<div class="tour-hueco" id="tour-hueco"></div>' : "") +
+      '<div class="tour-globo" id="tour-globo"><h3 id="tour-t">' + esc(p.titulo) + '</h3><p id="tour-x">' + p.texto + "</p>" +
+      '<div class="tour-pie"><span class="paso">' + (tuto.i + 1) + " de " + tuto.pasos.length + "</span>" +
+      (ultimo ? "" : '<button type="button" class="link-btn" data-action="tour-saltar">Saltar</button>') +
+      (tuto.i ? '<button type="button" class="btn ghost" data-action="tour-atras">Atrás</button>' : "") +
+      '<button type="button" class="btn" data-action="tour-sig">' + (ultimo ? "Entendido" : "Siguiente") + "</button></div></div></div>";
+    posicionarTutorial();
+    var b = $tourRoot.querySelector('[data-action="tour-sig"]');
+    if (b) try { b.focus({ preventScroll: true }); } catch (e) { /* ignore */ }
+  }
+  // Lights the step's element (scrolling to it) and puts the bubble under it, or above when it doesn't fit
+  function posicionarTutorial() {
+    if (!tuto.pasos) return;
+    if (ui.view !== tuto.vista) { cerrarTutorial(); return; }
+    var p = tuto.pasos[tuto.i], el = p.sel ? document.querySelector(p.sel) : null;
+    var globo = document.getElementById("tour-globo"), hueco = document.getElementById("tour-hueco");
+    if (!globo) return;
+    var w = window.innerWidth, alto = window.innerHeight, gw = globo.offsetWidth, gh = globo.offsetHeight;
+    if (!el || !hueco) {
+      if (hueco) hueco.hidden = true;
+      globo.style.left = Math.max(16, (w - gw) / 2) + "px";
+      globo.style.top = Math.max(16, (alto - gh) / 2) + "px";
+      return;
+    }
+    var scroller = document.getElementById("scroller");
+    if (scroller.contains(el)) {
+      var r0 = el.getBoundingClientRect();
+      el.scrollIntoView({ block: r0.height > alto * 0.4 ? "start" : "center", inline: "nearest" });
+      scroller.scrollLeft = 0;
+    }
+    var r = el.getBoundingClientRect(), m = 6;
+    // a tall card is lit only at the top, so the bubble still fits under it
+    var h = Math.min(r.height, alto * 0.4);
+    hueco.style.left = Math.max(2, r.left - m) + "px"; hueco.style.top = Math.max(2, r.top - m) + "px";
+    hueco.style.width = (r.width + 2 * m) + "px"; hueco.style.height = (h + 2 * m) + "px";
+    var top = r.top + h + m + 12;
+    if (top + gh > alto - 12) top = r.top - m - 12 - gh;
+    if (top < 12) top = Math.max(12, alto - gh - 12);
+    globo.style.left = Math.min(Math.max(16, r.left + r.width / 2 - gw / 2), w - gw - 16) + "px";
+    globo.style.top = top + "px";
+  }
+  window.addEventListener("resize", function () { if (tuto.pasos) posicionarTutorial(); });
+
   // ---------- Mis productoras (Ajustes) ----------
   function fechasDe(pid) { return data.eventos.filter(function (e) { return e.productoraId === pid; }).length; }
 
@@ -2265,6 +2410,15 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     }
     if (t.hasAttribute("data-toggle")) { togglePago(t.getAttribute("data-toggle")); return; }
     var a = t.getAttribute("data-action");
+    if (a === "tour-sig") { if (tuto.i < tuto.pasos.length - 1) { tuto.i++; pintarTutorial(); } else cerrarTutorial(); return; }
+    if (a === "tour-atras") { if (tuto.i > 0) { tuto.i--; pintarTutorial(); } return; }
+    if (a === "tour-saltar") { cerrarTutorial(); return; }
+    if (a === "tutorial") { cerrarTutorial(); abrirTutorial(ui.view); return; }
+    if (a === "tutorial-reiniciar") {
+      try { localStorage.removeItem(TUTO_KEY); } catch (err) { /* ignore */ }
+      ui.view = "cartelera"; render(); document.getElementById("scroller").scrollTop = 0;
+      return;
+    }
     if (a === "new") openSheet(null);
     else if (a === "cartel-nuevo") abrirCartel();
     else if (a === "c-manual") {
@@ -2412,6 +2566,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     }, 30);
   });
   document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && tuto.pasos) { cerrarTutorial(); return; }
     if (e.key === "Escape" && $sheetRoot.innerHTML) closeSheet();
   });
 
