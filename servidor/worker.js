@@ -398,18 +398,25 @@ function filtrosHTML(lista) {
   const prods = [...new Map(lista.filter(c => c.productoraNombre).map(c => [c.productoraNombre.toLowerCase(), c.productoraNombre])).entries()]
     .sort((a, b) => a[1].localeCompare(b[1], "es"));
   const opcMes = meses.map(m => '<option value="mes:' + m + '">' + MESES_LARGO[+m.slice(5, 7) - 1] + " " + m.slice(0, 4) + "</option>").join("");
-  return '<details class="filtros"><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M6.5 12h11M10 18h4"/></svg>Filtrar<span id="f-activo"></span></summary>' +
-    '<div class="filtros-box">' +
+  // search by name + a filter icon on the same row; the icon opens date / productora options
+  return '<div class="buscar-fila">' +
+    '<label class="buscar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
+    '<input id="f-q" type="search" placeholder="Buscar evento" autocomplete="off" aria-label="Buscar evento por nombre"></label>' +
+    '<button type="button" id="f-toggle" class="f-btn" aria-expanded="false" aria-controls="f-box" aria-label="Filtrar por fecha o productora">' +
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M6.5 12h11M10 18h4"/></svg><span id="f-activo" hidden></span></button></div>' +
+    '<div class="filtros-box" id="f-box" hidden>' +
     '<label>Fecha<select id="f-fecha"><option value="">Todas las fechas</option><option value="finde">Este fin de semana</option><option value="7d">Próximos 7 días</option>' + opcMes + "</select></label>" +
     (prods.length ? '<label>Productora<select id="f-prod"><option value="">Todas las productoras</option>' +
       prods.map(p => '<option value="' + esc(p[0]) + '">' + esc(p[1]) + "</option>").join("") + "</select></label>" : "") +
-    '<button type="button" id="f-limpiar">Quitar filtros</button></div></details>' +
-    '<div class="vacio" id="f-vacio" hidden>No hay eventos con ese filtro.</div>';
+    '<button type="button" id="f-limpiar">Quitar filtros</button></div>' +
+    '<div class="vacio" id="f-vacio" hidden>No hay eventos con esa búsqueda.</div>';
 }
 const SCRIPT_FILTROS = `<script>
 (function () {
-  var fF = document.getElementById("f-fecha"), fP = document.getElementById("f-prod"), act = document.getElementById("f-activo");
-  if (!fF) return;
+  var fQ = document.getElementById("f-q"), fF = document.getElementById("f-fecha"), fP = document.getElementById("f-prod");
+  var act = document.getElementById("f-activo"), box = document.getElementById("f-box"), tog = document.getElementById("f-toggle");
+  if (!fQ) return;
+  function norm(t) { return String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
   function iso(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
   function rango(v) {
     var h = new Date(); h.setHours(0, 0, 0, 0);
@@ -424,16 +431,23 @@ const SCRIPT_FILTROS = `<script>
     return null;
   }
   function aplicar() {
-    var r = rango(fF.value), p = fP ? fP.value : "", n = 0;
+    var q = norm(fQ.value).trim(), r = rango(fF.value), p = fP ? fP.value : "", n = 0;
     document.querySelectorAll(".ev").forEach(function (ev) {
       var f = ev.getAttribute("data-fecha");
-      var ok = (!r || (f >= r[0] && f <= r[1])) && (!p || ev.getAttribute("data-prod") === p);
+      var nombre = norm((ev.querySelector("h2") || {}).textContent);
+      var ok = (!q || nombre.indexOf(q) >= 0) && (!r || (f >= r[0] && f <= r[1])) && (!p || ev.getAttribute("data-prod") === p);
       ev.hidden = !ok; if (ok) n++;
     });
     document.getElementById("f-vacio").hidden = n > 0;
     var cuantos = (fF.value ? 1 : 0) + (p ? 1 : 0);
-    act.textContent = cuantos ? " · " + cuantos + (cuantos === 1 ? " filtro" : " filtros") : "";
+    act.hidden = !cuantos; act.textContent = cuantos || "";
+    tog.classList.toggle("activo", !!cuantos);
   }
+  tog.addEventListener("click", function () {
+    box.hidden = !box.hidden;
+    tog.setAttribute("aria-expanded", String(!box.hidden));
+  });
+  fQ.addEventListener("input", aplicar);
   fF.addEventListener("change", aplicar);
   if (fP) fP.addEventListener("change", aplicar);
   document.getElementById("f-limpiar").addEventListener("click", function () { fF.value = ""; if (fP) fP.value = ""; aplicar(); });
@@ -497,15 +511,20 @@ h2 { margin: 0; font-size: 19px; line-height: 1.25; overflow-wrap: anywhere; }
 .red { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px 8px 10px; font-weight: 600; font-size: 14px; }
 .red svg { width: 22px; height: 22px; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; }
 .red svg .lleno { fill: var(--accent); stroke: none; }
-.filtros { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
-.filtros summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-weight: 600; }
-.filtros summary::-webkit-details-marker { display: none; }
-.filtros summary svg { width: 20px; height: 20px; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; }
-.filtros summary span { color: var(--accent); }
-.filtros-box { display: flex; flex-direction: column; gap: 12px; padding: 0 14px 14px; }
-.filtros label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
-.filtros select { -webkit-appearance: none; appearance: none; width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font: inherit; font-size: 16px; }
+.buscar-fila { display: flex; gap: 8px; align-items: stretch; }
+.buscar { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; }
+.buscar svg, .f-btn svg { width: 20px; height: 20px; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; flex: 0 0 auto; }
+.buscar input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--fg); font: inherit; font-size: 16px; padding: 12px 0; }
+.buscar input::placeholder { color: var(--muted); }
+.buscar:focus-within { border-color: var(--accent); }
+.f-btn { position: relative; flex: 0 0 auto; width: 48px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; cursor: pointer; padding: 0; }
+.f-btn[aria-expanded="true"], .f-btn.activo { border-color: var(--accent); }
+.f-btn span { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--accent); color: var(--ink); font-size: 11px; font-weight: 700; display: grid; place-items: center; padding: 0 4px; }
+.filtros-box { display: flex; flex-direction: column; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-top: -6px; }
+.filtros-box label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.filtros-box select { -webkit-appearance: none; appearance: none; width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font: inherit; font-size: 16px; }
 #f-limpiar { align-self: flex-start; background: none; border: 0; color: var(--accent); font: inherit; font-weight: 600; padding: 4px 0; cursor: pointer; }
+.filtros-box[hidden], .f-btn span[hidden] { display: none; }
 .ev[hidden], .vacio[hidden] { display: none; }
 .vacio { color: var(--muted); text-align: center; padding: 40px 16px; border: 1px dashed var(--line); border-radius: 16px; }
 </style></head>
