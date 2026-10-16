@@ -155,6 +155,8 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .filtro-prod { display: flex; flex-direction: column; gap: 6px; }
 .filtro-prod label { font-size: 13px; font-weight: 600; color: var(--muted); }
 .peligro-txt { color: var(--danger); align-self: flex-start; }
+.acciones-cuenta { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+.acciones-cuenta > .btn { width: 100%; }
 .link-publico { display: block; font-weight: 700; color: var(--accent); text-decoration: none; overflow-wrap: anywhere; font-size: 15px; }
 .chips.prod-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; }
 .chips.prod-chips::-webkit-scrollbar { display: none; }
@@ -399,7 +401,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var storageOk = true;
-  var VERSION = 50;
+  var VERSION = 51;
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
@@ -890,7 +892,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       "<li>Tocá el botón <b>Compartir</b> (el cuadrado con la flecha).</li>" +
       "<li>Elegí <b>Agregar a inicio</b> y confirmá.</li>" +
       "</ol><p>" + (EN_SITIO ? "Tus datos están en tu cuenta: los ves desde el ícono o desde cualquier navegador." : "Usá siempre la app desde ese ícono: ahí quedan tus datos.") + "</p>" +
-      '<p class="hint">Versión ' + VERSION + ". Se actualiza sola cuando la abrís con internet. <a href='privacidad.html' target='_blank' rel='noopener'>Política de privacidad</a></p></section>";
+      '<p class="hint">Versión ' + VERSION + ". Se actualiza sola cuando la abrís con internet. <a href='privacidad.html' target='_blank' rel='noopener'>Política de privacidad</a></p></section>" + accionesCuenta();
     return h;
   }
 
@@ -1435,8 +1437,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         '<p class="hint" id="perfil-preview">' + esc(textoLinkPrevio(cuenta.nombre || cuenta.sugerido)) + "</p>" +
         '<div class="err" id="perfil-err"></div>' +
         '<div class="row"><button class="btn" type="button" data-action="perfil-guardar">Crear mi link</button></div>' +
-        (enAjustes ? '<p>Entraste como <b>' + esc(cuenta.email) + "</b>.</p>" +
-          '<div class="row"><button class="btn ghost" type="button" data-action="salir">Cerrar sesión</button></div>' + borrarCuentaHTML() : "") +
+        (enAjustes ? '<p>Entraste como <b>' + esc(cuenta.email) + "</b>.</p>" : "") +
         "</section>";
     }
     var link = linkPublico();
@@ -1452,12 +1453,17 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         '<div class="field"><label for="ajustes-wa">WhatsApp</label><input id="ajustes-wa" class="input" type="tel" inputmode="tel" autocomplete="off" placeholder="11 2345 6789" value="' + esc(cuenta.whatsapp ? "+" + cuenta.whatsapp : "") + '"></div>' +
         '<p class="hint">Se muestran con su logo en tu página, para que tus clientes te escriban.</p>' +
         '<div class="err" id="ajustes-err"></div>' +
-        '<div class="row"><button class="btn" type="button" data-action="perfil-guardar-ajustes">Guardar perfil</button>' +
-        '<button class="btn ghost" type="button" data-action="salir">Cerrar sesión</button></div>' + borrarCuentaHTML();
+        '<div class="row"><button class="btn" type="button" data-action="perfil-guardar-ajustes">Guardar perfil</button></div>';
     } else {
       h += '<p class="hint" id="sync-estado">' + esc(textoSync()) + "</p>";
     }
     return h + "</section>";
+  }
+  // Bottom of Ajustes: sign out and delete account, full width one under the other
+  function accionesCuenta() {
+    if (!cuenta) return "";
+    return '<section class="acciones-cuenta">' +
+      '<button class="btn ghost" type="button" data-action="salir">Cerrar sesión</button>' + borrarCuentaHTML() + "</section>";
   }
   function borrarCuentaHTML() {
     return ui.borrarCuenta
@@ -1466,7 +1472,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         : "¿Eliminar tu cuenta? Se borran tu página y los eventos guardados en internet. Lo que tenés en este celular no se toca.") + "</span>" +
         '<button class="btn peligro" type="button" data-action="cuenta-borrar-ok">Sí, eliminar</button>' +
         '<button class="btn ghost" type="button" data-action="cuenta-borrar-no">No</button></div>'
-      : '<button class="link-btn peligro-txt" type="button" data-action="cuenta-borrar">Eliminar mi cuenta</button>';
+      : '<button class="btn danger" type="button" data-action="cuenta-borrar">Eliminar mi cuenta</button>';
   }
 
   function viewCartelera() {
@@ -2291,7 +2297,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     else if (a === "link-compartir") compartirLink();
     else if (a === "link-copiar") copiarTexto(linkPublico());
     else if (a === "salir") salir();
-    else if (a === "cuenta-borrar") { ui.borrarCuenta = true; render(); }
+    else if (a === "cuenta-borrar") { ui.borrarCuenta = true; render(); var bc = document.querySelector(".acciones-cuenta .sheet-confirm"); if (bc) bc.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
     else if (a === "cuenta-borrar-no") { ui.borrarCuenta = false; render(); }
     else if (a === "cuenta-borrar-ok") eliminarCuenta();
     else if (a === "pct-cancel") { ui.editPct = null; render(); curarLuego(); }
