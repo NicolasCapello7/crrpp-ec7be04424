@@ -398,12 +398,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // RRPP account lives apart from the data so backups never carry the session token
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
-  var PRODUCTORAS_INICIALES = [
-    { id: "p-mandarine", nombre: "Mandarine", factura: true },
-    { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
-  ];
   var storageOk = true;
-  var VERSION = 47;
+  var VERSION = 49;
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
@@ -413,27 +409,42 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var $toastRoot = document.getElementById("toast-root");
 
   // ---------- storage ----------
+  function datosVacios() { data.pct = null; data.eventos = []; data.productoras = []; data.cartelera = []; data.ultimaCopia = null; }
+  // On bpmtickets.com.ar each account keeps its own data on the device, so another account never sees it
+  function claveDatos() { return EN_SITIO ? (cuenta ? STORE_KEY + ":" + cuenta.email : null) : STORE_KEY; }
   function load() {
+    datosVacios();
+    var clave = claveDatos();
+    leerBase();
+    if (!clave) return;
     try {
-      var raw = localStorage.getItem(STORE_KEY);
+      var raw = localStorage.getItem(clave);
+      // data saved before each account had its own copy goes (once) to the account signed in
+      if (!raw && clave !== STORE_KEY) {
+        raw = localStorage.getItem(STORE_KEY);
+        if (raw) { localStorage.setItem(clave, raw); localStorage.removeItem(STORE_KEY); }
+      }
       if (raw) {
         var d = JSON.parse(raw);
         data.pct = typeof d.pct === "number" ? d.pct : null;
         data.eventos = Array.isArray(d.eventos) ? d.eventos : [];
-        data.productoras = Array.isArray(d.productoras) ? d.productoras : PRODUCTORAS_INICIALES.map(function (p) { return Object.assign({}, p); });
+        data.productoras = Array.isArray(d.productoras) ? d.productoras : [];
         data.cartelera = Array.isArray(d.cartelera) ? d.cartelera : [];
         var reparar = false;
         data.cartelera.forEach(function (c) { if (!c.id) { c.id = nuevoId() + Math.random().toString(36).slice(2, 5); reparar = true; } });
         if (reparar) persist();
         data.ultimaCopia = d.ultimaCopia || null;
-      } else {
-        data.productoras = PRODUCTORAS_INICIALES.map(function (p) { return Object.assign({}, p); });
       }
     } catch (e) { storageOk = false; }
   }
+  function guardarLocal() {
+    var clave = claveDatos();
+    if (!clave) return true;
+    try { localStorage.setItem(clave, JSON.stringify(data)); return true; } catch (e) { return false; }
+  }
   function persist() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); storageOk = true; programarSubida(); return true; }
-    catch (e) { storageOk = false; toast("No se pudo guardar en el celular. Revisá que no estés en modo privado."); return false; }
+    if (guardarLocal()) { storageOk = true; programarSubida(); programarRend(); return true; }
+    storageOk = false; toast("No se pudo guardar en el celular. Revisá que no estés en modo privado."); return false;
   }
   function nuevoId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
@@ -577,7 +588,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (no) box.classList.add("corto");
   }
 
-  function copiaPendiente() { return data.eventos.length > 0 && diasDesde(data.ultimaCopia) > 30; }
+  // on the site everything is already in the account, so there is no backup reminder
+  function copiaPendiente() { return !EN_SITIO && data.eventos.length > 0 && diasDesde(data.ultimaCopia) > 30; }
   function diasDesde(iso) { return iso ? (Date.now() - new Date(iso).getTime()) / 864e5 : Infinity; }
 
   // ---------- render ----------
@@ -640,7 +652,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var evs = eventosFiltrados();
     var filtrando = filtroActivo(ui.filtroEv);
     var t = totales(evs);
-    var h = '<section class="summary" aria-label="Resumen de cobros">' +
+    var h = (EN_SITIO && rend.estado === "error" ? '<div class="banner rend-estado">' + esc(textoRend()) + "</div>" : "") +
+      '<section class="summary" aria-label="Resumen de cobros">' +
       '<div><div class="eyebrow">Te deben' + (filtrando ? " · filtrado" : "") + "</div>" +
       '<div class="big num">' + money.format(t.pend) + "</div>" +
       '<div class="sub">' + (t.pendN === 1 ? "1 evento por cobrar" : t.pendN + " eventos por cobrar") +
@@ -853,7 +866,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     h += viewProductoras();
 
     h += '<section class="card"><h2>Copia de seguridad</h2>' +
-      "<p>Tus datos se guardan solo en este celular. Guardá una copia de vez en cuando (en Archivos o iCloud Drive) para no perderlos si borrás la app o cambiás de teléfono.</p>" +
+      (EN_SITIO
+        ? '<p class="rend-estado">' + esc(textoRend()) + "</p><p>Si querés, también podés guardar una copia en un archivo (en Archivos o iCloud Drive).</p>"
+        : "<p>Tus datos se guardan solo en este celular. Guardá una copia de vez en cuando (en Archivos o iCloud Drive) para no perderlos si borrás la app o cambiás de teléfono.</p>") +
       '<p>Última copia: <b>' + (data.ultimaCopia ? fechaCorta(data.ultimaCopia.slice(0, 10)) : "nunca") + "</b></p>" +
       (copiaPendiente() ? '<div class="banner">' + (data.ultimaCopia ? "Hace más de un mes que no guardás una copia." : "Todavía no guardaste una copia de tus datos.") + "</div>" : "") +
       '<div class="row">' +
@@ -862,7 +877,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       "</div>";
     if (ui.pendingImport) {
       var n = ui.pendingImport.eventos.length;
-      h += '<div class="confirm"><span>Vas a reemplazar tus ' + data.eventos.length + " eventos actuales por los " + n + " de la copia" +
+      h += '<div class="confirm"><span>Vas a reemplazar tus ' + data.eventos.length + " eventos actuales por los " + n + " de la copia" + (EN_SITIO ? " (también en tu cuenta, en todos tus dispositivos)" : "") +
         (ui.pendingImport.exportado ? " del " + fechaCorta(String(ui.pendingImport.exportado).slice(0, 10)) : "") + ". Esto no se puede deshacer.</span>" +
         '<div class="row"><button class="btn" type="button" data-action="import-confirm">Reemplazar</button>' +
         '<button class="btn ghost" type="button" data-action="import-cancel">Cancelar</button></div></div>';
@@ -874,7 +889,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       "<li>Abrí este link en <b>Safari</b>.</li>" +
       "<li>Tocá el botón <b>Compartir</b> (el cuadrado con la flecha).</li>" +
       "<li>Elegí <b>Agregar a inicio</b> y confirmá.</li>" +
-      "</ol><p>Usá siempre la app desde ese ícono: ahí quedan tus datos.</p>" +
+      "</ol><p>" + (EN_SITIO ? "Tus datos están en tu cuenta: los ves desde el ícono o desde cualquier navegador." : "Usá siempre la app desde ese ícono: ahí quedan tus datos.") + "</p>" +
       '<p class="hint">Versión ' + VERSION + ". Se actualiza sola cuando la abrís con internet. <a href='privacidad.html' target='_blank' rel='noopener'>Política de privacidad</a></p></section>";
     return h;
   }
@@ -981,7 +996,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     return fetch(API_URL + ruta, { method: opciones.method || "GET", headers: headers, body: opciones.body ? JSON.stringify(opciones.body) : undefined })
       .then(function (r) {
         return r.json().catch(function () { return { ok: false, error: "red" }; }).then(function (j) {
-          if (r.status === 401 && j.error === "sesion") { cuenta = null; guardarCuenta(); render(); toast("Tu sesión venció. Entrá de nuevo."); }
+          if (r.status === 401 && j.error === "sesion") { soltarCuenta(); render(); toast("Tu sesión venció. Entrá de nuevo."); }
           if (!j.ok) throw j;
           return j;
         });
@@ -997,7 +1012,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // What goes to the public page: the events plus each productora's name (productoras live on the phone)
   function eventosParaSubir() {
     return data.cartelera.map(function (c) {
-      var p = prod(c.productoraId) || PRODUCTORAS_INICIALES.find(function (x) { return x.id === c.productoraId; });
+      var p = prod(c.productoraId);
       return Object.assign({}, c, { productoraNombre: p ? p.nombre : (c.productoraId && c.productoraNombre) || "" });
     });
   }
@@ -1018,26 +1033,124 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     }, function () { sync.estado = "error"; pintarSync(); });
   }
   function pintarSync() { var el = document.getElementById("sync-estado"); if (el) el.textContent = textoSync(); }
-  window.addEventListener("online", function () { if (sync.estado === "error") subirEventos(); });
+  window.addEventListener("online", function () { if (sync.estado === "error") subirEventos(); if (rend.estado === "error") subirRend(); });
+
+  // ---------- Mi Rendimiento in the account (bpmtickets.com.ar) ----------
+  // The phone keeps a working copy (works offline) plus "base": the last state the server confirmed.
+  // Each save sends only what differs from base; when nothing is pending, the server's copy replaces the
+  // local one, so changes made on another device show up here.
+  var rend = { base: null, estado: "", timer: null, enviando: false };
+  function claveBase() { var k = claveDatos(); return k && EN_SITIO ? k + "|base" : null; }
+  function leerBase() {
+    var k = claveBase();
+    try { rend.base = k ? JSON.parse(localStorage.getItem(k) || "null") : null; } catch (e) { rend.base = null; }
+  }
+  function guardarBase() { var k = claveBase(); if (k) try { localStorage.setItem(k, JSON.stringify(rend.base)); } catch (e) { /* ignore */ } }
+  function porId(lista) { var m = {}; lista.forEach(function (x) { m[x.id] = JSON.stringify(x); }); return m; }
+  function cambiosRend() {
+    var b = rend.base || { pct: null, eventos: {}, productoras: {} };
+    function dif(actual, previo) {
+      var ahora = porId(actual), poner = [], sacar = [];
+      actual.forEach(function (x) { if (previo[x.id] !== ahora[x.id]) poner.push(x); });
+      Object.keys(previo).forEach(function (id) { if (!(id in ahora)) sacar.push(id); });
+      return { poner: poner, sacar: sacar };
+    }
+    var ev = dif(data.eventos, b.eventos), pr = dif(data.productoras, b.productoras);
+    var c = { eventos: ev.poner, borrarEventos: ev.sacar, productoras: pr.poner, borrarProductoras: pr.sacar };
+    // a device that never synced only sends its % if it has one, so it can't erase the account's
+    if (rend.base ? data.pct !== b.pct : data.pct != null) c.pct = data.pct;
+    return c;
+  }
+  function hayCambios(c) { return !!(c.eventos.length || c.borrarEventos.length || c.productoras.length || c.borrarProductoras.length || "pct" in c); }
+  function textoRend() {
+    if (rend.estado === "subiendo") return "Guardando en tu cuenta…";
+    if (rend.estado === "error") return "Sin conexión: tus cambios quedan en este celular y se suben solos cuando vuelvas a tener internet.";
+    return "Todo se guarda en tu cuenta: entrá desde cualquier celular o computadora y vas a ver lo mismo.";
+  }
+  function pintarRend() { document.querySelectorAll(".rend-estado").forEach(function (el) { el.textContent = textoRend(); }); }
+  function programarRend() {
+    if (!EN_SITIO || !cuenta) return;
+    clearTimeout(rend.timer);
+    rend.timer = setTimeout(subirRend, 800);
+  }
+  // Takes the server's copy as this device's data
+  function adoptarRend(d) {
+    var antes = JSON.stringify([data.pct, data.eventos, data.productoras]);
+    data.pct = typeof d.pct === "number" ? d.pct : null;
+    data.eventos = d.eventos || [];
+    data.productoras = d.productoras || [];
+    rend.base = { pct: data.pct, eventos: porId(data.eventos), productoras: porId(data.productoras) };
+    guardarBase();
+    sumarProductorasFaltantes();
+    guardarLocal();
+    if (hayCambios(cambiosRend())) programarRend();
+    if (JSON.stringify([data.pct, data.eventos, data.productoras]) !== antes) render();
+  }
+  function subirRend() {
+    if (!EN_SITIO || !cuenta || rend.enviando) return Promise.resolve();
+    clearTimeout(rend.timer);
+    var c = cambiosRend();
+    if (!hayCambios(c)) return Promise.resolve();
+    // big first uploads go in parts
+    var envio = { eventos: c.eventos.slice(0, 400), borrarEventos: c.borrarEventos, productoras: c.productoras.slice(0, 200), borrarProductoras: c.borrarProductoras };
+    if ("pct" in c) envio.pct = c.pct;
+    var enviados = { eventos: envio.eventos.map(function (x) { return [x.id, JSON.stringify(x)]; }), productoras: envio.productoras.map(function (x) { return [x.id, JSON.stringify(x)]; }) };
+    var yo = cuenta, habiaError = rend.estado === "error";
+    rend.enviando = true; rend.estado = "subiendo"; pintarRend();
+    return api("/api/rendimiento", { method: "PUT", body: envio }).then(function (j) {
+      rend.enviando = false;
+      if (cuenta !== yo) return;
+      // what the server confirmed becomes the new base; anything edited meanwhile stays pending
+      var b = rend.base || { pct: null, eventos: {}, productoras: {} };
+      enviados.eventos.forEach(function (x) { b.eventos[x[0]] = x[1]; });
+      enviados.productoras.forEach(function (x) { b.productoras[x[0]] = x[1]; });
+      envio.borrarEventos.forEach(function (id) { delete b.eventos[id]; });
+      envio.borrarProductoras.forEach(function (id) { delete b.productoras[id]; });
+      if ("pct" in envio) b.pct = envio.pct;
+      else if (!rend.base) b.pct = typeof j.datos.pct === "number" ? j.datos.pct : null;
+      rend.base = b; guardarBase();
+      rend.estado = ""; pintarRend();
+      if (habiaError && ui.view === "fechas") render();
+      if (hayCambios(cambiosRend())) return subirRend();
+      adoptarRend(j.datos);
+    }, function () {
+      rend.enviando = false;
+      if (cuenta !== yo) return;
+      rend.estado = "error"; pintarRend();
+      if (ui.view === "fechas") render();
+    });
+  }
+  // Brings the account's copy (on open, and each time the app comes back to the screen)
+  function traerRend() {
+    if (!EN_SITIO || !cuenta || rend.enviando) return Promise.resolve();
+    if (hayCambios(cambiosRend())) return subirRend(); // its answer brings the server's copy
+    var yo = cuenta;
+    return api("/api/rendimiento").then(function (j) {
+      if (cuenta !== yo || rend.enviando || hayCambios(cambiosRend())) return;
+      adoptarRend(j.datos);
+    }, function () { /* offline: keep the local copy */ });
+  }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") traerRend(); });
 
   // Events synced from another device can name a productora this device doesn't have: reuse one with the
   // same name, or add it (without "pide factura"; that can be set in Mis productoras)
   function sumarProductorasFaltantes() {
     data.cartelera.forEach(function (c) {
       if (!c.productoraId || prod(c.productoraId)) return;
-      var inicial = PRODUCTORAS_INICIALES.find(function (x) { return x.id === c.productoraId; });
-      var nombre = (inicial && inicial.nombre) || c.productoraNombre;
+      var nombre = c.productoraNombre;
       if (!nombre) return;
       var igual = prodPorNombre(nombre);
       if (igual) { c.productoraId = igual.id; return; }
-      data.productoras.push(inicial ? Object.assign({}, inicial) : { id: c.productoraId, nombre: nombre, factura: false, valorFree: null });
+      data.productoras.push({ id: c.productoraId, nombre: nombre, factura: false, valorFree: null });
     });
   }
 
   // Pull the account and its events from the server. First time on this device: merge local + server.
   function traerCuenta() {
     if (!cuenta) return Promise.resolve();
+    var yo = cuenta;
     return api("/api/yo").then(function (j) {
+      if (cuenta !== yo) return; // signed out (or into another account) while this was loading
       Object.assign(cuenta, j.usuario);
       if (!cuenta.sincronizado) {
         var porId = {};
@@ -1046,17 +1159,17 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         sumarProductorasFaltantes();
         cuenta.sincronizado = true;
         guardarCuenta();
-        try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { /* ignore */ }
+        guardarLocal();
         subirEventos();
       } else {
         data.cartelera = j.eventos;
         sumarProductorasFaltantes();
         sync.ultimo = JSON.stringify(eventosParaSubir());
         guardarCuenta();
-        try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { /* ignore */ }
+        guardarLocal();
       }
       render();
-      if (EN_SITIO) traerTraspaso();
+      if (EN_SITIO) traerRend().then(traerTraspaso);
     }, function () { /* offline: keep the local copy */ });
   }
 
@@ -1209,7 +1322,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   function entrarCon(j) {
     cuenta = Object.assign({ token: j.token, sugerido: j.sugerido, sincronizado: false }, j.usuario);
     guardarCuenta();
-    auth = { modo: "entrar", email: "", cargando: false };
+    if (EN_SITIO) load(); // this account's own data (a new account starts empty)
+    auth ={ modo: "entrar", email: "", cargando: false };
     render();
     toast("Entraste como " + j.usuario.email);
     return traerCuenta();
@@ -1251,11 +1365,19 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       })
       .catch(function () { toast("No pude entrar con Google. Probá de nuevo."); });
   }
+  // Leaves the account on this device. On the site the event list lives in the account (it comes back from the
+  // server on the next sign-in) and the rest stays saved under this account, so the next one starts with its own data.
+  function soltarCuenta() {
+    clearTimeout(sync.timer); clearTimeout(rend.timer);
+    if (EN_SITIO && cuenta) { data.cartelera = []; guardarLocal(); }
+    cuenta = null; guardarCuenta();
+    sync.ultimo = null; sync.estado = "";
+    rend.base = null; rend.estado = "";
+    if (EN_SITIO) { datosVacios(); ui.cartelProd = ""; ui.pendingImport = null; ui.borrarCuenta = false; }
+  }
   function salir() {
     var t = cuenta;
-    cuenta = null; guardarCuenta();
-    // on the shared site the event list stays only in the account, so another RRPP on this device starts clean
-    if (EN_SITIO) { data.cartelera = []; sync.ultimo = null; try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { /* ignore */ } }
+    soltarCuenta();
     render();
     if (t) fetch(API_URL + "/api/logout", { method: "POST", headers: { Authorization: "Bearer " + t.token } }).catch(function () {});
     toast(EN_SITIO ? "Cerraste sesión." : "Cerraste sesión. Tus eventos quedan en este celular.");
@@ -1275,15 +1397,19 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       Object.assign(cuenta, j.usuario); guardarCuenta(); render();
       toast(linkPublico() !== linkAntes ? "Tu link: " + linkPublico().replace("https://", "") : "Perfil guardado");
     }, function (e) {
-      err.textContent = e.error === "instagram" ? "Revisá tu Instagram: poné solo tu usuario, por ejemplo nico.rrpp"
+      err.textContent = e.error === "instagram" ? "Revisá tu Instagram: poné solo tu usuario, por ejemplo juan.rrpp"
         : e.error === "whatsapp" ? "Revisá tu WhatsApp: poné tu número con código de área, por ejemplo 11 2345 6789"
         : "No se pudo guardar. Revisá tu conexión.";
     });
   }
   function eliminarCuenta() {
     api("/api/cuenta", { method: "DELETE" }).then(function () {
-      cuenta = null; guardarCuenta(); ui.borrarCuenta = false; render();
-      toast("Cuenta eliminada. Tu página ya no existe; tus datos del celular siguen acá.");
+      // on the site the account held everything: its copy on this phone goes too
+      var clave = EN_SITIO ? claveDatos() : null;
+      soltarCuenta(); ui.borrarCuenta = false;
+      if (clave) try { localStorage.removeItem(clave); localStorage.removeItem(clave + "|base"); } catch (e) { /* ignore */ }
+      render();
+      toast(EN_SITIO ? "Cuenta eliminada." : "Cuenta eliminada. Tu página ya no existe; tus datos del celular siguen acá.");
     }, function () { toast("No se pudo eliminar. Revisá tu conexión."); });
   }
   function compartirLink() {
@@ -1304,11 +1430,14 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     }
     if (!cuenta.slug) {
       return '<section class="card cuenta"><h2>Elegí tu nombre público</h2>' +
-        "<p>Va en tu link. Por ejemplo, con <b>Nico Capello</b> tu link es <b>bpmtickets.com.ar/eventos/nico-capello</b>. Si otro RRPP ya usa ese nombre, tu link suma un código al final (<b>?id=…</b>) para que no se confundan.</p>" +
+        "<p>Va en tu link. Por ejemplo, con <b>Juan Pérez</b> tu link es <b>bpmtickets.com.ar/eventos/juan-perez</b>. Si otro RRPP ya usa ese nombre, tu link suma un código al final (<b>?id=…</b>) para que no se confundan.</p>" +
         '<div class="field"><label for="perfil-nombre">Nombre público</label><input id="perfil-nombre" class="input" type="text" autocomplete="off" value="' + esc(cuenta.nombre || "") + '" placeholder="' + esc(cuenta.sugerido || "Tu nombre") + '"></div>' +
         '<p class="hint" id="perfil-preview">' + esc(textoLinkPrevio(cuenta.nombre || cuenta.sugerido)) + "</p>" +
         '<div class="err" id="perfil-err"></div>' +
-        '<div class="row"><button class="btn" type="button" data-action="perfil-guardar">Crear mi link</button></div></section>';
+        '<div class="row"><button class="btn" type="button" data-action="perfil-guardar">Crear mi link</button></div>' +
+        (enAjustes ? '<p>Entraste como <b>' + esc(cuenta.email) + "</b>.</p>" +
+          '<div class="row"><button class="btn ghost" type="button" data-action="salir">Cerrar sesión</button></div>' + borrarCuentaHTML() : "") +
+        "</section>";
     }
     var link = linkPublico();
     var h = '<section class="card cuenta"><h2>' + (enAjustes ? "Tu cuenta" : "Tu página de eventos") + "</h2>" +
@@ -1324,16 +1453,20 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         '<p class="hint">Se muestran con su logo en tu página, para que tus clientes te escriban.</p>' +
         '<div class="err" id="ajustes-err"></div>' +
         '<div class="row"><button class="btn" type="button" data-action="perfil-guardar-ajustes">Guardar perfil</button>' +
-        '<button class="btn ghost" type="button" data-action="salir">Cerrar sesión</button></div>' +
-        (ui.borrarCuenta
-          ? '<div class="sheet-confirm"><span>¿Eliminar tu cuenta? Se borran tu página y los eventos guardados en internet. Lo que tenés en este celular no se toca.</span>' +
-            '<button class="btn peligro" type="button" data-action="cuenta-borrar-ok">Sí, eliminar</button>' +
-            '<button class="btn ghost" type="button" data-action="cuenta-borrar-no">No</button></div>'
-          : '<button class="link-btn peligro-txt" type="button" data-action="cuenta-borrar">Eliminar mi cuenta</button>');
+        '<button class="btn ghost" type="button" data-action="salir">Cerrar sesión</button></div>' + borrarCuentaHTML();
     } else {
       h += '<p class="hint" id="sync-estado">' + esc(textoSync()) + "</p>";
     }
     return h + "</section>";
+  }
+  function borrarCuentaHTML() {
+    return ui.borrarCuenta
+      ? '<div class="sheet-confirm"><span>' + (EN_SITIO
+        ? "¿Eliminar tu cuenta? Se borran tu página, tus eventos y todo Mi Rendimiento (ventas, cobros y productoras). No se puede deshacer: si querés conservar algo, guardá una copia antes."
+        : "¿Eliminar tu cuenta? Se borran tu página y los eventos guardados en internet. Lo que tenés en este celular no se toca.") + "</span>" +
+        '<button class="btn peligro" type="button" data-action="cuenta-borrar-ok">Sí, eliminar</button>' +
+        '<button class="btn ghost" type="button" data-action="cuenta-borrar-no">No</button></div>'
+      : '<button class="link-btn peligro-txt" type="button" data-action="cuenta-borrar">Eliminar mi cuenta</button>';
   }
 
   function viewCartelera() {
@@ -1741,7 +1874,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       '<option value="__nueva">+ Agregar productora nueva…</option></select></div>' +
       "</div>" +
       '<div class="nueva-prod" id="f-np-wrap" hidden>' +
-      '<div class="field"><label for="f-np-nombre">Nombre de la productora</label><input id="f-np-nombre" class="input" type="text" autocomplete="off" placeholder="Ej: Mandarine"></div>' +
+      '<div class="field"><label for="f-np-nombre">Nombre de la productora</label><input id="f-np-nombre" class="input" type="text" autocomplete="off" placeholder="Nombre"></div>' +
       '<div class="field"><label for="f-np-free">Valor por free escaneado</label><div class="money"><span>$</span><input id="f-np-free" class="input miles num" type="text" inputmode="numeric" autocomplete="off" placeholder="0"></div></div>' +
       '<label class="check"><input type="checkbox" id="f-np-factura"> Pide factura para pagar</label></div>' +
       '<div class="grid2">' +
@@ -2297,9 +2430,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   });
 
   // ---------- start ----------
+  leerCuenta();
   load();
   sumarProductorasFaltantes();
-  leerCuenta();
   render();
   traerCuenta().then(function () { if (ui.view === "cartelera") actualizarTodos(); });
   if (navigator.storage && navigator.storage.persist) { navigator.storage.persist().catch(function () {}); }

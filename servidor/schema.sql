@@ -51,3 +51,11 @@ CREATE TABLE IF NOT EXISTS traspasos (
   datos TEXT NOT NULL,
   creado INTEGER NOT NULL
 );
+
+-- v4: Mi Rendimiento (ventas, cobros, productoras y %) guardado en la cuenta
+CREATE TABLE IF NOT EXISTS rendimiento (
+  sub TEXT PRIMARY KEY,
+  data TEXT NOT NULL,            -- JSON { pct, eventos, productoras }
+  version INTEGER NOT NULL DEFAULT 0,
+  actualizado TEXT NOT NULL
+);

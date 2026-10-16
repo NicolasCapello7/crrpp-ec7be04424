@@ -3,6 +3,7 @@
 //   /lector?url=…             lee un evento público de Bombo, Venti, Planout, Passline o Talk (lo usa la app)
 //   /api/…                    cuentas (Google o mail y contraseña), nombre público y lista de eventos de cada RRPP
 //   /eventos/<nombre>[?id=…]  página pública con los próximos eventos de ese RRPP, para sus clientes
+//   cron diario               copia de cuentas, eventos y Mi Rendimiento en la base rrpp-copias (30 días)
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
 // Shown when the link is shared (WhatsApp, Instagram…): the app logo, not an event flyer
 const LOGO_URL = "https://bpmtickets.com.ar/og.png";
@@ -388,7 +389,7 @@ async function usuarioDe(req, env) {
   return env.DB.prepare("SELECT u.sub, u.email, u.nombre, u.slug, u.instagram, u.whatsapp FROM sessions s JOIN users u ON u.sub = s.sub WHERE s.token_hash = ? AND s.expira > ?")
     .bind(await sha256(m[1]), Date.now()).first();
 }
-// "nico-capello" -> …/eventos/nico-capello; a repeated name is stored as "nico-capello--3f9a" -> …/eventos/nico-capello?id=3f9a
+// "juan-perez" -> …/eventos/juan-perez; a repeated name is stored as "juan-perez--3f9a" -> …/eventos/juan-perez?id=3f9a
 function linkDe(env, slug) {
   if (!slug) return "";
   const i = slug.indexOf("--");
@@ -411,7 +412,7 @@ async function limpiarViejos(env) {
     env.DB.prepare("DELETE FROM traspasos WHERE creado < ?").bind(ahora - 30 * 24 * HORA_MS)
   ]);
 }
-// "@nico.rrpp", "instagram.com/nico.rrpp/" -> "nico.rrpp"; null if it isn't a valid handle, "" if empty
+// "@juan.rrpp", "instagram.com/juan.rrpp/" -> "juan.rrpp"; null if it isn't a valid handle, "" if empty
 function limpiarInstagram(t) {
   t = String(t || "").trim();
   if (!t) return "";
@@ -671,6 +672,84 @@ function limpiarTraspaso(d) {
   const texto = JSON.stringify(limpio);
   return texto.length <= 400 * 1024 ? texto : null;
 }
+// ---------- Mi Rendimiento: sales, cobros, productoras and %, saved per account ----------
+// Each device sends only what changed (items to put and ids to remove) and gets the merged result back.
+function fechaOk(v) { return /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : null; }
+function pctOk(v) { return typeof v === "number" && v >= 0 && v <= 100 ? v : null; }
+function montoOk(v) { return typeof v === "number" && v >= 0 && isFinite(v) ? v : null; }
+function idOk(v) { return v ? String(v).slice(0, 40) : null; }
+function limpiarVenta(e) {
+  if (!e || typeof e !== "object" || !e.id || typeof e.nombre !== "string") return null;
+  return {
+    id: idOk(e.id), nombre: e.nombre.slice(0, 200), fecha: fechaOk(e.fecha) || "",
+    entradas: Math.floor(montoOk(Number(e.entradas)) || 0), facturado: montoOk(Number(e.facturado)) || 0,
+    productoraId: idOk(e.productoraId), cartelId: idOk(e.cartelId),
+    facturada: !!e.facturada, fechaFactura: fechaOk(e.fechaFactura),
+    frees: montoOk(e.frees) == null ? null : Math.floor(e.frees), valorFreeCobrado: montoOk(e.valorFreeCobrado),
+    pctPropio: pctOk(e.pctPropio), cobrado: !!e.cobrado, fechaCobro: fechaOk(e.fechaCobro), pctCobrado: pctOk(e.pctCobrado),
+    creado: String(e.creado || "").slice(0, 40)
+  };
+}
+function limpiarProductora(p) {
+  if (!p || typeof p !== "object" || !p.id || typeof p.nombre !== "string" || !p.nombre.trim()) return null;
+  return { id: idOk(p.id), nombre: p.nombre.trim().slice(0, 80), factura: !!p.factura, valorFree: montoOk(p.valorFree) };
+}
+async function leerRendimiento(env, sub) {
+  const f = await env.DB.prepare("SELECT data, version FROM rendimiento WHERE sub = ?").bind(sub).first();
+  let d = null;
+  try { d = f ? JSON.parse(f.data) : null; } catch (e) { d = null; }
+  return { datos: { pct: d && typeof d.pct === "number" ? d.pct : null, eventos: (d && d.eventos) || [], productoras: (d && d.productoras) || [] }, version: f ? f.version : null };
+}
+function juntar(lista, poner, sacar, limpiar) {
+  const m = new Map(lista.map(x => [x.id, x]));
+  (Array.isArray(sacar) ? sacar : []).slice(0, 5000).forEach(id => m.delete(String(id)));
+  (Array.isArray(poner) ? poner : []).slice(0, 1000).forEach(x => { const l = limpiar(x); if (l) m.set(l.id, l); });
+  return [...m.values()];
+}
+async function guardarCambiosRendimiento(env, sub, c) {
+  // two devices saving at the same moment: the write only lands on the version it read, otherwise it reads again
+  for (let intento = 0; intento < 4; intento++) {
+    const { datos: d, version } = await leerRendimiento(env, sub);
+    d.eventos = juntar(d.eventos, c.eventos, c.borrarEventos, limpiarVenta);
+    d.productoras = juntar(d.productoras, c.productoras, c.borrarProductoras, limpiarProductora);
+    if ("pct" in c) d.pct = pctOk(c.pct);
+    const texto = JSON.stringify(d);
+    if (d.eventos.length > 3000 || d.productoras.length > 300 || texto.length > 1500000) throw { code: "grande" };
+    const ahora = new Date().toISOString();
+    const r = version == null
+      ? await env.DB.prepare("INSERT INTO rendimiento (sub, data, version, actualizado) VALUES (?, ?, 1, ?) ON CONFLICT(sub) DO NOTHING").bind(sub, texto, ahora).run()
+      : await env.DB.prepare("UPDATE rendimiento SET data = ?, version = version + 1, actualizado = ? WHERE sub = ? AND version = ?").bind(texto, ahora, sub, version).run();
+    if (r.meta && r.meta.changes) return d;
+  }
+  throw { code: "ocupado" };
+}
+
+// ---------- daily copy (cron) into the separate rrpp-copias database; the last 30 days are kept ----------
+const DIAS_COPIA = 30;
+async function copiaDiaria(env) {
+  if (!env.COPIAS) return;
+  const dia = hoyAR();
+  for (const tabla of ["users", "eventos", "rendimiento"]) {
+    const { results } = await env.DB.prepare("SELECT * FROM " + tabla).all();
+    // rows go in a few big statements (json_each) to stay within the queries a run may make
+    let lote = [], largo = 0;
+    const escribir = async () => {
+      if (!lote.length) return;
+      await env.COPIAS.prepare("INSERT OR REPLACE INTO copias (dia, tabla, clave, data) SELECT ?, ?, json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?)")
+        .bind(dia, tabla, JSON.stringify(lote)).run();
+      lote = []; largo = 0;
+    };
+    for (const fila of results) {
+      const texto = JSON.stringify(fila);
+      lote.push([fila.sub, texto]); largo += texto.length;
+      if (largo > 400000) await escribir();
+    }
+    await escribir();
+  }
+  const limite = new Date(Date.now() - 3 * HORA_MS - DIAS_COPIA * 24 * HORA_MS).toISOString().slice(0, 10);
+  await env.COPIAS.prepare("DELETE FROM copias WHERE dia < ?").bind(limite).run();
+}
+
 async function servirApp(env, ruta) {
   const r = await fetch((env.APP_FUENTE || "https://nicolascapello7.github.io/crrpp-ec7be04424") + ruta, { cf: { cacheTtl: 30, cacheEverything: true } });
   if (!r.ok) return pagina404();
@@ -881,15 +960,27 @@ export default {
             return json(env, { ok: true });
           }
         }
+        if (ruta === "/api/rendimiento") {
+          if (req.method === "GET") return json(env, { ok: true, datos: (await leerRendimiento(env, u.sub)).datos });
+          if (req.method === "PUT") {
+            const cambios = await req.json().catch(() => null);
+            if (!cambios || typeof cambios !== "object") return json(env, { ok: false, error: "datos" }, 400);
+            try { return json(env, { ok: true, datos: await guardarCambiosRendimiento(env, u.sub, cambios) }); }
+            catch (e) { return json(env, { ok: false, error: (e && e.code) || "servidor" }, e && e.code === "grande" ? 413 : 409); }
+          }
+        }
         if (ruta === "/api/cuenta" && req.method === "DELETE") {
-          // the RRPP deletes everything stored about them: events, sessions, pending codes and account
+          // the RRPP deletes everything stored about them: events, Mi Rendimiento, sessions, pending codes and account
           await env.DB.batch([
             env.DB.prepare("DELETE FROM eventos WHERE sub = ?").bind(u.sub),
+            env.DB.prepare("DELETE FROM rendimiento WHERE sub = ?").bind(u.sub),
             env.DB.prepare("DELETE FROM traspasos WHERE sub = ?").bind(u.sub),
             env.DB.prepare("DELETE FROM codigos WHERE email = ?").bind(u.email),
             env.DB.prepare("DELETE FROM sessions WHERE sub = ?").bind(u.sub),
             env.DB.prepare("DELETE FROM users WHERE sub = ?").bind(u.sub)
           ]);
+          // and from the daily copies, so nothing about the account stays behind
+          if (env.COPIAS) await env.COPIAS.prepare("DELETE FROM copias WHERE clave = ?").bind(u.sub).run().catch(() => {});
           return json(env, { ok: true });
         }
         if (ruta === "/api/logout" && req.method === "POST") {
@@ -902,7 +993,7 @@ export default {
 
       if (ruta === "/robots.txt") return new Response("User-agent: *\nDisallow: /api/\nDisallow: /lector\n", { headers: { "Content-Type": "text/plain" } });
 
-      // ----- public page of a RRPP: /eventos/nico-capello (or ?id=… when two RRPPs share a name) -----
+      // ----- public page of a RRPP: /eventos/juan-perez (or ?id=… when two RRPPs share a name) -----
       const pub = ruta.match(/^\/eventos\/([a-z0-9-]{3,40})\/?$/);
       if (pub && req.method === "GET") {
         const id = (url.searchParams.get("id") || "").toLowerCase();
@@ -927,7 +1018,7 @@ export default {
         if (ARCHIVOS_APP.has(ruta)) return servirApp(env, ruta);
       }
 
-      // links shared before the move (…workers.dev/nico-capello or /nico-capello) go to the new address
+      // links shared before the move (…workers.dev/juan-perez or /juan-perez) go to the new address
       const viejo = ruta.match(/^\/([a-z0-9-]{3,40})\/?$/);
       if (viejo && req.method === "GET" && !RESERVADOS.has(viejo[1])) {
         const u = await env.DB.prepare("SELECT slug FROM users WHERE slug = ?").bind(viejo[1]).first();
@@ -937,5 +1028,10 @@ export default {
     } catch (e) {
       return json(env, { ok: false, error: "servidor" }, 500);
     }
+  },
+
+  // cron (wrangler.toml [triggers]): daily copy
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(copiaDiaria(env));
   }
 };

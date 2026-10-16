@@ -22,3 +22,12 @@ GOOGLE_CLIENT_ID = "174152864828-tbk0qlbnm28kak0lvbum8mvi296n2mtj.apps.googleuse
 binding = "DB"
 database_name = "rrpp-db"
 database_id = "4155f35e-8af7-414f-9a39-9ea458760d5b"
+
+# daily copy of accounts, event lists and Mi Rendimiento (see copias.sql); last 30 days kept
+[[d1_databases]]
+binding = "COPIAS"
+database_name = "rrpp-copias"
+database_id = "bd8b8a8f-24e3-4fab-a28a-cc3215800072"
+
+[triggers]
+crons = ["0 7 * * *"] # every day at 04:00 Argentina
