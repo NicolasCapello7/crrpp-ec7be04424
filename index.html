@@ -401,7 +401,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var storageOk = true;
-  var VERSION = 51;
+  var VERSION = 52;
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
@@ -600,7 +600,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var pideEntrar = EN_SITIO && !cuenta;
     document.querySelector(".nav").hidden = pideEntrar;
     if (pideEntrar) { $fab.hidden = true; $main.innerHTML = viewAuth(); montarBotonesGoogle(); return; }
-    $fab.hidden = ui.view === "ajustes";
+    $fab.hidden = ui.view === "ajustes" || ui.view === "rendimiento";
     var enCartel = ui.view === "cartelera";
     $fab.setAttribute("data-action", enCartel ? "cartel-nuevo" : "new");
     $fab.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>' +
@@ -610,26 +610,49 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       else b.removeAttribute("aria-current");
     });
 
-    var html = "";
-    if (!storageOk) {
-      html += '<div class="banner">Este navegador no deja guardar datos (¿modo privado?). Abrí la app desde el ícono de inicio o desde Safari normal.</div>';
-    }
     // backup reminder lives in Ajustes; the tab shows a dot when a copy is due
     var tabAjustes = document.querySelector('.nav [data-view="ajustes"]');
     if (tabAjustes) tabAjustes.classList.toggle("aviso", copiaPendiente());
 
+    var prevPct = document.getElementById("pct-input");
+    var keep = prevPct && document.activeElement === prevPct ? prevPct.value : null;
+    $main.innerHTML = htmlVista();
+    if (keep != null) { var np = document.getElementById("pct-input"); np.value = keep; np.focus(); }
+    ajustarChips();
+    montarBotonesGoogle();
+  }
+
+  function htmlVista() {
+    var html = "";
+    if (!storageOk) {
+      html += '<div class="banner">Este navegador no deja guardar datos (¿modo privado?). Abrí la app desde el ícono de inicio o desde Safari normal.</div>';
+    }
     if (!EN_SITIO) html += bannerMudanza();
     if (ui.view === "fechas") html += viewFechas();
     else if (ui.view === "cartelera") html += viewCartelera();
     else if (ui.view === "rendimiento") html += viewRendimiento();
     else html += viewAjustes();
-
-    var prevPct = document.getElementById("pct-input");
-    var keep = prevPct && document.activeElement === prevPct ? prevPct.value : null;
-    $main.innerHTML = '<div class="stack">' + html + "</div>";
-    if (keep != null) { var np = document.getElementById("pct-input"); np.value = keep; np.focus(); }
+    return '<div class="stack">' + html + "</div>";
+  }
+  // Redraws the screen around the open filter panel without touching it: replacing a date field while
+  // its picker is open closes the picker (iOS fills an empty one with today as soon as it opens)
+  function renderSinTocarPanel() {
+    var panel = document.querySelector("#main .stack > .filtro-panel");
+    if (!panel) { render(); return; }
+    var tmp = document.createElement("div");
+    tmp.innerHTML = htmlVista();
+    var stack = panel.parentNode, antes = true;
+    Array.prototype.slice.call(stack.children).forEach(function (n) { if (n !== panel) n.remove(); });
+    Array.prototype.slice.call(tmp.firstChild.children).forEach(function (n) {
+      if (n.classList.contains("filtro-panel")) { antes = false; return; }
+      if (antes) stack.insertBefore(n, panel); else stack.appendChild(n);
+    });
+    // the quick ranges in the panel still show which one is selected
+    panel.querySelectorAll("[data-rango]").forEach(function (b) {
+      var f = b.getAttribute("data-scope") === "ev" ? ui.filtroEv : ui.filtroRend, r = rango(b.getAttribute("data-rango"));
+      b.setAttribute("aria-pressed", String(f.desde === r[0] && f.hasta === r[1]));
+    });
     ajustarChips();
-    montarBotonesGoogle();
   }
 
   function totales(lista) {
@@ -2356,7 +2379,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       var partesId = e.target.id.split("-");
       var obj = partesId[0] === "ev" ? ui.filtroEv : ui.filtroRend;
       obj[partesId[1]] = e.target.value || "";
-      render();
+      renderSinTocarPanel();
     } else if (e.target.id === "ev-prod") {
       ui.filtroEv.prod = e.target.value;
       render();
