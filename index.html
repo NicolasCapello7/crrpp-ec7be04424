@@ -313,6 +313,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 .auth p { margin: 0; color: var(--muted); }
 .auth p b { color: var(--fg); }
 .auth-form { display: flex; flex-direction: column; gap: 12px; }
+.auth .g-btn { display: flex; justify-content: center; min-height: 44px; }
 .auth-o { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
 .auth-o::before, .auth-o::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
 .auth .link-btn { font-size: 14px; align-self: flex-start; }
@@ -402,7 +403,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 46;
+  var VERSION = 47;
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
