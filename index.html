@@ -188,6 +188,7 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .buscar-ev:focus-within { border-color: var(--accent); }
 .acciones-cuenta { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
 .acciones-cuenta > .btn { width: 100%; }
+.version { margin: 0; text-align: center; font-size: 13px; color: var(--muted); }
 .link-publico { display: block; font-weight: 700; color: var(--accent); text-decoration: none; overflow-wrap: anywhere; font-size: 15px; }
 .chips.prod-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; }
 .chips.prod-chips::-webkit-scrollbar { display: none; }
@@ -264,9 +265,9 @@ select.input { -webkit-appearance: none; appearance: none; padding-right: 40px; 
 
 /* Stats */
 .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; min-width: 0; }
-.tile .v { font-family: var(--display); font-weight: 800; font-size: 28px; line-height: 1.05; overflow-wrap: anywhere; }
-.tile .k { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; min-width: 0; text-align: center; display: flex; flex-direction: column; gap: 10px; }
+.tile .k { margin: 0; font-size: 13px; font-weight: 700; line-height: 1.25; color: var(--fg); padding-bottom: 9px; border-bottom: 1px dashed var(--line); flex: 1 0 auto; display: grid; place-items: center; }
+.tile .v { font-family: var(--display); font-weight: 800; font-size: 28px; line-height: 1.05; overflow-wrap: anywhere; color: var(--accent); }
 .section-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .section-h h2 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 22px; text-transform: uppercase; letter-spacing: .02em; }
 .rank { display: flex; flex-direction: column; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
@@ -436,7 +437,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var storageOk = true;
-  var VERSION = 54;
+  var VERSION = 55; // bumped with sw.js on every change so phones pick it up
+  var VERSION_APP = "1.0.0"; // the one shown in Ajustes
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, buscarEv: "", filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
@@ -724,10 +726,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var h = (EN_SITIO && rend.estado === "error" ? '<div class="banner rend-estado">' + esc(textoRend()) + "</div>" : "") +
       '<section class="summary" aria-label="Resumen de cobros">' +
       '<div><div class="eyebrow">Por cobrar' + (filtrando ? " · filtrado" : "") + "</div>" +
-      '<div class="big num">' + money.format(t.pend) + "</div>" +
-      '<div class="sub">' + (t.pendN === 1 ? "1 evento por cobrar" : t.pendN + " eventos por cobrar") +
-      (t.factN ? " (" + t.factN + (t.factN === 1 ? " facturado" : " facturados") + ")" : "") +
-      (data.pct != null ? " · comisión " + pctf.format(data.pct) + "%" : "") + "</div></div>" +
+      '<div class="big num">' + money.format(t.pend) + "</div></div>" +
       '<div class="split">' +
       '<div><div class="eyebrow">Ya cobrado</div><div class="v num">' + money.format(t.cobr) + "</div></div>" +
       '<div><div class="eyebrow">Total generado</div><div class="v num">' + money.format(t.com) + "</div></div>" +
@@ -859,13 +858,13 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var prom = t.entradas / evs.length;
     var ticket = t.entradas ? t.facturado / t.entradas : 0;
     h += '<div class="tiles">' +
-      tile(intf.format(evs.length), evs.length === 1 ? "evento trabajado" : "eventos trabajados") +
-      tile(intf.format(t.entradas), "entradas vendidas") +
-      tile(money.format(t.facturado), "monto vendido") +
-      tile(money.format(t.com), t.frees ? "ganado total (comisión + frees)" : "comisión total") +
-      tile(intf.format(Math.round(prom)), "entradas por evento (promedio)") +
-      tile(money.format(ticket), "precio promedio por entrada") +
-      (t.frees ? tile(intf.format(t.frees), "frees escaneados") + tile(money.format(t.montoFrees), "ganado por frees") : "") +
+      tile(intf.format(evs.length), evs.length === 1 ? "Evento Trabajado" : "Eventos Trabajados") +
+      tile(intf.format(t.entradas), "Entradas Vendidas") +
+      tile(money.format(t.facturado), "Monto Vendido") +
+      tile(money.format(t.com), t.frees ? "Ganado Total (Comisión + Frees)" : "Comisión Total") +
+      tile(intf.format(Math.round(prom)), "Entradas por Evento (Promedio)") +
+      tile(money.format(ticket), "Precio Promedio por Entrada") +
+      (t.frees ? tile(intf.format(t.frees), "Frees Escaneados") + tile(money.format(t.montoFrees), "Ganado por Frees") : "") +
       "</div>";
 
     var key = ui.rankBy;
@@ -923,7 +922,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   }
 
   function tile(v, k) {
-    return '<div class="tile"><div class="v num">' + v + '</div><div class="k">' + k + "</div></div>";
+    return '<div class="tile"><h3 class="k">' + k + '</h3><div class="v num">' + v + "</div></div>";
   }
 
   function viewAjustes() {
@@ -938,10 +937,14 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
     h += viewProductoras();
 
-    h += '<section class="card"><h2>Copia de seguridad</h2>' +
-      (EN_SITIO
-        ? '<p class="rend-estado">' + esc(textoRend()) + "</p><p>Si querés, también podés guardar una copia en un archivo (en Archivos o iCloud Drive).</p>"
-        : "<p>Tus datos se guardan solo en este celular. Guardá una copia de vez en cuando (en Archivos o iCloud Drive) para no perderlos si borrás la app o cambiás de teléfono.</p>") +
+    if (!EN_SITIO) h += viewCopia();
+    h += viewInstalar() + accionesCuenta() + '<p class="version">V ' + VERSION_APP + "</p>";
+    return h;
+  }
+  // Backup to a file: only on the old copy of the app, where data lives on the phone
+  function viewCopia() {
+    var h = '<section class="card"><h2>Copia de seguridad</h2>' +
+      "<p>Tus datos se guardan solo en este celular. Guardá una copia de vez en cuando (en Archivos o iCloud Drive) para no perderlos si borrás la app o cambiás de teléfono.</p>" +
       '<p>Última copia: <b>' + (data.ultimaCopia ? fechaCorta(data.ultimaCopia.slice(0, 10)) : "nunca") + "</b></p>" +
       (copiaPendiente() ? '<div class="banner">' + (data.ultimaCopia ? "Hace más de un mes que no guardás una copia." : "Todavía no guardaste una copia de tus datos.") + "</div>" : "") +
       '<div class="row">' +
@@ -950,19 +953,16 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       "</div>";
     if (ui.pendingImport) {
       var n = ui.pendingImport.eventos.length;
-      h += '<div class="confirm"><span>Vas a reemplazar tus ' + data.eventos.length + " eventos actuales por los " + n + " de la copia" + (EN_SITIO ? " (también en tu cuenta, en todos tus dispositivos)" : "") +
+      h += '<div class="confirm"><span>Vas a reemplazar tus ' + data.eventos.length + " eventos actuales por los " + n + " de la copia" +
         (ui.pendingImport.exportado ? " del " + fechaCorta(String(ui.pendingImport.exportado).slice(0, 10)) : "") + ". Esto no se puede deshacer.</span>" +
         '<div class="row"><button class="btn" type="button" data-action="import-confirm">Reemplazar</button>' +
         '<button class="btn ghost" type="button" data-action="import-cancel">Cancelar</button></div></div>';
     }
-    h += '<div class="err" id="import-err"></div></section>';
-
-
-    h += '<section class="card"><h2>¿Cómo funciona?</h2><p>Tocá <b>?</b> arriba para ver la explicación de la sección en la que estás, o mirá el recorrido completo desde el principio.</p>' +
-      '<div class="row"><button class="btn ghost" type="button" data-action="tutorial-reiniciar">Ver el tutorial de nuevo</button></div></section>';
-
+    return h + '<div class="err" id="import-err"></div></section>';
+  }
+  function viewInstalar() {
     var so = ui.instalar || (/android/i.test(navigator.userAgent) ? "android" : "ios");
-    h += '<section class="card" id="card-instalar"><h2>Instalar en tu celular</h2>' +
+    return '<section class="card" id="card-instalar"><h2>Instalar en tu celular</h2>' +
       '<div class="chips" role="group" aria-label="Elegí tu celular">' +
       '<button type="button" class="chip" data-instalar="ios" aria-pressed="' + (so === "ios") + '">iPhone</button>' +
       '<button type="button" class="chip" data-instalar="android" aria-pressed="' + (so === "android") + '">Android</button></div><ol>' +
@@ -973,9 +973,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         : "<li>Abrí este link en <b>Safari</b>.</li>" +
           "<li>Tocá el botón <b>Compartir</b> (el cuadrado con la flecha).</li>" +
           "<li>Elegí <b>Agregar a inicio</b> y confirmá.</li>") +
-      "</ol><p>" + (EN_SITIO ? "Tus datos están en tu cuenta: los ves desde el ícono o desde cualquier navegador." : "Usá siempre la app desde ese ícono: ahí quedan tus datos.") + "</p>" +
-      '<p class="hint">Versión ' + VERSION + ". Se actualiza sola cuando la abrís con internet. <a href='privacidad.html' target='_blank' rel='noopener'>Política de privacidad</a></p></section>" + accionesCuenta();
-    return h;
+      "</ol><p>" + (EN_SITIO ? "Tus datos están en tu cuenta: los ves desde el ícono o desde cualquier navegador." : "Usá siempre la app desde ese ícono: ahí quedan tus datos.") + "</p></section>";
   }
 
   // ---------- Eventos: cards built from a ticketing link (Bombo, Venti, Planout, Passline) ----------
@@ -1116,7 +1114,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       sync.ultimo = foto; sync.estado = ""; pintarSync();
     }, function () { sync.estado = "error"; pintarSync(); });
   }
-  function pintarSync() { var el = document.getElementById("sync-estado"); if (el) el.textContent = textoSync(); }
+  // only shown when the page couldn't be updated (no connection)
+  function pintarSync() { var el = document.getElementById("sync-estado"); if (el) { el.textContent = textoSync(); el.hidden = sync.estado !== "error"; } }
   window.addEventListener("online", function () { if (sync.estado === "error") subirEventos(); if (rend.estado === "error") subirRend(); });
 
   // ---------- Mi Rendimiento in the account (bpmtickets.com.ar) ----------
@@ -1533,11 +1532,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         '<p class="hint">Si lo cambiás, cambia tu link y el anterior deja de funcionar.</p>' +
         '<div class="field"><label for="ajustes-ig">Instagram</label><div class="money"><span>@</span><input id="ajustes-ig" class="input" type="text" autocomplete="off" autocapitalize="off" placeholder="tu.usuario" value="' + esc(cuenta.instagram || "") + '"></div></div>' +
         '<div class="field"><label for="ajustes-wa">WhatsApp</label><input id="ajustes-wa" class="input" type="tel" inputmode="tel" autocomplete="off" placeholder="11 2345 6789" value="' + esc(cuenta.whatsapp ? "+" + cuenta.whatsapp : "") + '"></div>' +
-        '<p class="hint">Se muestran con su logo en tu página, para que tus clientes te escriban.</p>' +
         '<div class="err" id="ajustes-err"></div>' +
         '<div class="row"><button class="btn" type="button" data-action="perfil-guardar-ajustes">Guardar perfil</button></div>';
     } else {
-      h += '<p class="hint" id="sync-estado">' + esc(textoSync()) + "</p>";
+      h += '<p class="hint" id="sync-estado"' + (sync.estado === "error" ? "" : " hidden") + ">" + esc(textoSync()) + "</p>";
     }
     return h + "</section>";
   }
@@ -1550,7 +1548,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   function borrarCuentaHTML() {
     return ui.borrarCuenta
       ? '<div class="sheet-confirm"><span>' + (EN_SITIO
-        ? "¿Eliminar tu cuenta? Se borran tu página, tus eventos y todo Mi Rendimiento (ventas, cobros y productoras). No se puede deshacer: si querés conservar algo, guardá una copia antes."
+        ? "¿Eliminar tu cuenta? Se borran tu página, tus eventos y todo Mi Rendimiento (ventas, cobros y productoras). No se puede deshacer."
         : "¿Eliminar tu cuenta? Se borran tu página y los eventos guardados en internet. Lo que tenés en este celular no se toca.") + "</span>" +
         '<button class="btn peligro" type="button" data-action="cuenta-borrar-ok">Sí, eliminar</button>' +
         '<button class="btn ghost" type="button" data-action="cuenta-borrar-no">No</button></div>'
@@ -2439,11 +2437,6 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (a === "tour-atras") { if (tuto.i > 0) { tuto.i--; pintarTutorial(); } return; }
     if (a === "tour-saltar") { cerrarTutorial(); return; }
     if (a === "tutorial") { cerrarTutorial(); abrirTutorial(ui.view); return; }
-    if (a === "tutorial-reiniciar") {
-      try { localStorage.removeItem(TUTO_KEY); } catch (err) { /* ignore */ }
-      ui.view = "cartelera"; render(); document.getElementById("scroller").scrollTop = 0;
-      return;
-    }
     if (a === "new") openSheet(null);
     else if (a === "cartel-nuevo") abrirCartel();
     else if (a === "c-manual") {
