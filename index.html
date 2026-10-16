@@ -148,7 +148,7 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .preview-cartel .cartel-flyer { width: 96px; }
 .cartel-top[data-cartel-editar] { cursor: pointer; }
 .cartel-list .cartel-top { flex-direction: column; gap: 12px; }
-.cartel-list .cartel-flyer { width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; }
+.cartel-list .cartel-flyer { width: 100%; height: auto; aspect-ratio: auto; object-fit: contain; border-radius: 12px; }
 .cartel-list .cartel-flyer.vacio { aspect-ratio: 16 / 6; }
 .auto-estado { font-size: 12px; color: var(--muted); margin-top: -8px; }
 .cuenta .g-btn { min-height: 44px; }
@@ -379,7 +379,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     { id: "p-thebow-rio", nombre: "The Bow / Rio", factura: true }
   ];
   var storageOk = true;
-  var VERSION = 44;
+  var VERSION = 45;
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
 
@@ -901,7 +901,31 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     "red": "No hay conexión o el lector no respondió. Probá de nuevo."
   };
   function linkValido(t) { return /^https?:\/\/(www\.)?(wearebombo\.com|wearebombo\.app\.link|venti\.live|venti\.com\.ar|planout\.ar|planout\.com\.ar|passline\.com|home\.passline\.com|passline\.com\.ar|talk-tickets\.com)\//i.test(t); }
-  function extraerLink(t) { var m = String(t || "").match(/https?:\/\/[^\s]+/); return m ? m[0] : String(t || "").trim(); }
+  function extraerLink(t) {
+    var txt = String(t || "").replace(/[\u200b-\u200f\u2028\u2029\ufeff]/g, "");
+    var todos = txt.match(/https?:\/\/[^\s"'<>]+/gi) || [];
+    for (var i = 0; i < todos.length; i++) if (linkValido(todos[i])) return todos[i];
+    return todos[0] || txt.trim();
+  }
+  // Reads the clipboard in every format it offers: Safari often stores a copied link only as a URL item, so readText() comes back empty
+  function leerPortapapeles() {
+    var cb = navigator.clipboard;
+    if (!cb) return Promise.reject(new Error("sin portapapeles"));
+    var soloTexto = function () { return cb.readText ? cb.readText() : ""; };
+    if (!cb.read) return Promise.resolve().then(soloTexto);
+    return cb.read().then(function (items) {
+      var lecturas = [];
+      items.forEach(function (it) {
+        ["text/uri-list", "text/plain", "text/html"].forEach(function (tipo) {
+          if (it.types.indexOf(tipo) >= 0) lecturas.push(it.getType(tipo).then(function (b) { return b.text(); }).catch(function () { return ""; }));
+        });
+      });
+      return Promise.all(lecturas).then(function (partes) {
+        var todo = partes.join("\n");
+        return todo.trim() ? todo : soloTexto();
+      });
+    }, soloTexto);
+  }
 
   // ---------- RRPP account (Google) and server sync ----------
   function leerCuenta() {
@@ -1895,13 +1919,15 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       var sinPermiso = function () {
         ci.focus();
         var ay = document.getElementById("c-ayuda");
-        if (ay) ay.textContent = "Tu navegador no deja pegar con el botón: mantené apretado el campo y elegí Pegar. La búsqueda arranca sola.";
+        if (ay) ay.textContent = "No pude leer el link copiado: mantené apretado el campo y elegí Pegar. La búsqueda arranca sola.";
       };
       try {
-        navigator.clipboard.readText().then(function (txt) {
+        leerPortapapeles().then(function (txt) {
           var l = extraerLink(txt);
-          if (!linkValido(l)) { ci.value = l; pintarCartelSheet(ERRORES_LECTOR.link); return; }
-          ci.value = l; buscarCartel();
+          if (linkValido(l)) { ci.value = l; buscarCartel(); return; }
+          // nothing that looks like a link: let the native paste do it instead of showing an error
+          if (!/^https?:\/\//i.test(l)) { sinPermiso(); return; }
+          ci.value = l; pintarCartelSheet(ERRORES_LECTOR.link);
         }, sinPermiso);
       } catch (err) { sinPermiso(); }
     }
