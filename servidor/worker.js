@@ -360,7 +360,8 @@ async function leerGetin(link) {
   if (r.status >= 400) throw { code: "plataforma" };
   const ev = leerEventoLD(r.html);
   if (!ev || !ev.nombre) throw { code: "evento" };
-  return Object.assign({}, ev, { url: link.split("?")[0], inicio: ev.inicio ? aHoraAR(ev.inicio) : "" });
+  // Get-in labels the local start time as UTC ("23:00Z" for an 11 PM party), so its clock time is taken as is
+  return Object.assign({}, ev, { url: link.split("?")[0], inicio: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(ev.inicio || "") ? ev.inicio.slice(0, 19) + "-03:00" : "" });
 }
 // FlashPass (Next.js): name, flyer and place from schema.org; tickets and start time from the page data
 function arregloJSON(texto, clave) {
@@ -414,7 +415,25 @@ function elegirPrecios(ofertas) {
     const o = disp.length ? disp.reduce((a, b) => (b.precio < a.precio ? b : a)) : lista.reduce((a, b) => (b.precio > a.precio ? b : a));
     return Object.assign({ nombre: o.nombre, precio: o.precio, agotado: !disp.length }, o.moneda === "USD" ? { moneda: "USD" } : {});
   }
-  return { general: actual(ofertas.filter(o => !esVip(o))), vip: actual(ofertas.filter(esVip)) };
+  return { general: actual(ofertas.filter(o => !esVip(o))), vip: actual(ofertas.filter(esVip)), grupos: gruposDe(ofertas, actual) };
+}
+// Tickets split by gender (Get-in: "MUJERES - TIER 2", "HOMBRES - TIER 2"): one price row per group instead of a single General
+function generoDe(nombre) {
+  if (/\b(mujer(es)?|damas?|chicas?|female)\b/i.test(nombre)) return "Mujeres";
+  if (/\b(hombres?|caballeros?|varones?|chicos?|male)\b/i.test(nombre)) return "Hombres";
+  return "";
+}
+const ORDEN_GRUPOS = ["Mujeres", "Hombres", "General", "VIP Mujeres", "VIP Hombres", "VIP"];
+function gruposDe(ofertas, actual) {
+  if (!ofertas.some(o => generoDe(o.nombre))) return null;
+  const grupos = new Map();
+  ofertas.forEach(o => {
+    const g = generoDe(o.nombre), tipo = esVip(o) ? (g ? "VIP " + g : "VIP") : (g || "General");
+    if (!grupos.has(tipo)) grupos.set(tipo, []);
+    grupos.get(tipo).push(o);
+  });
+  return [...grupos.entries()].sort((a, b) => ORDEN_GRUPOS.indexOf(a[0]) - ORDEN_GRUPOS.indexOf(b[0]))
+    .map(([tipo, lista]) => Object.assign({ tipo }, actual(lista)));
 }
 
 // ---------- Google sign-in ----------
@@ -522,6 +541,8 @@ function limpiarEventos(lista) {
     productoraNombre: String(c.productoraNombre || "").trim().slice(0, 80),
     general: precioLimpio(c.general),
     vip: precioLimpio(c.vip),
+    grupos: Array.isArray(c.grupos) && c.grupos.length ? c.grupos.slice(0, 8).filter(g => g && typeof g === "object")
+      .map(g => Object.assign({ tipo: String(g.tipo || "").slice(0, 30) }, precioLimpio(g))) : null,
     actualizado: String(c.actualizado || "").slice(0, 40)
   })).filter(c => c.id && c.nombre);
 }
@@ -544,7 +565,7 @@ async function refrescar(env, sub) {
     try {
       const ev = await leerLink(c.link);
       const precios = elegirPrecios(ev.ofertas);
-      c.general = precios.general; c.vip = precios.vip;
+      c.general = precios.general; c.vip = precios.vip; c.grupos = precios.grupos;
       if (imagenPermitida(ev.flyer)) c.flyer = ev.flyer;
       if (ev.inicio) { c.fecha = ev.inicio.slice(0, 10); c.hora = ev.inicio.slice(11, 16); }
       c.actualizado = new Date().toISOString();
@@ -555,7 +576,7 @@ async function refrescar(env, sub) {
   const porId = new Map(viejos.map(c => [c.id, c]));
   await guardarLista(env, sub, actual.map(c => {
     const n = porId.get(c.id);
-    return n && n.link === c.link ? Object.assign(c, { general: n.general, vip: n.vip, flyer: n.flyer, fecha: n.fecha, hora: n.hora, actualizado: n.actualizado }) : c;
+    return n && n.link === c.link ? Object.assign(c, { general: n.general, vip: n.vip, grupos: n.grupos, flyer: n.flyer, fecha: n.fecha, hora: n.hora, actualizado: n.actualizado }) : c;
   }));
 }
 
@@ -648,11 +669,12 @@ function redesHTML(u) {
 }
 function paginaHTML(lista, u, nonce) {
   const tarjetas = lista.map(c => {
-    const agotado = (!c.general || c.general.agotado) && (!c.vip || c.vip.agotado) && (c.general || c.vip);
+    const agotado = c.grupos && c.grupos.length ? c.grupos.every(g => g.agotado)
+      : (!c.general || c.general.agotado) && (!c.vip || c.vip.agotado) && (c.general || c.vip);
     return '<article class="ev" data-fecha="' + esc(c.fecha) + '" data-prod="' + esc((c.productoraNombre || "").toLowerCase()) + '">' +
       (c.flyer ? '<img src="' + esc(c.flyer) + '" alt="Flyer de ' + esc(c.nombre) + '" loading="lazy">' : "") +
       '<div class="info"><div class="fecha">' + esc(fechaLarga(c.fecha, c.hora)) + "</div><h2>" + esc(c.nombre) + "</h2>" +
-      '<div class="precios">' + filaPrecio("General", c.general) + filaPrecio("VIP", c.vip) + "</div>" +
+      '<div class="precios">' + (c.grupos && c.grupos.length ? c.grupos.map(g => filaPrecio(g.tipo, g)).join("") : filaPrecio("General", c.general) + filaPrecio("VIP", c.vip)) + "</div>" +
       (c.link ? '<a class="comprar' + (agotado ? " off" : "") + '" href="' + esc(c.link) + '" rel="noopener">' + (agotado ? "Ver evento" : "Comprar entradas") + "</a>" : "") +
       "</div></article>";
   }).join("");

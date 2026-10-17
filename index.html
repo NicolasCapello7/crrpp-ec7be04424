@@ -437,7 +437,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var storageOk = true;
-  var VERSION = 56; // bumped with sw.js on every change so phones pick it up
+  var VERSION = 57; // bumped with sw.js on every change so phones pick it up
   var VERSION_APP = "1.0.0"; // the one shown in Ajustes
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, buscarEv: "", filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
@@ -1000,13 +1000,36 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     function esVip(o) { return typeof o.vip === "boolean" ? o.vip : /vip/i.test(o.nombre); }
     var vip = ofertas.filter(esVip);
     var gen = ofertas.filter(function (o) { return !esVip(o); });
-    return { general: actual(gen), vip: actual(vip) };
+    return { general: actual(gen), vip: actual(vip), grupos: gruposDe(ofertas, actual, esVip) };
+  }
+  // Tickets split by gender (Get-in: "MUJERES - TIER 2", "HOMBRES - TIER 2"): one price row per group (same rule as the server)
+  function generoDe(nombre) {
+    if (/\b(mujer(es)?|damas?|chicas?|female)\b/i.test(nombre)) return "Mujeres";
+    if (/\b(hombres?|caballeros?|varones?|chicos?|male)\b/i.test(nombre)) return "Hombres";
+    return "";
+  }
+  var ORDEN_GRUPOS = ["Mujeres", "Hombres", "General", "VIP Mujeres", "VIP Hombres", "VIP"];
+  function gruposDe(ofertas, actual, esVip) {
+    if (!ofertas.some(function (o) { return generoDe(o.nombre); })) return null;
+    var grupos = {}, tipos = [];
+    ofertas.forEach(function (o) {
+      var g = generoDe(o.nombre), tipo = esVip(o) ? (g ? "VIP " + g : "VIP") : (g || "General");
+      if (!grupos[tipo]) { grupos[tipo] = []; tipos.push(tipo); }
+      grupos[tipo].push(o);
+    });
+    tipos.sort(function (a, b) { return ORDEN_GRUPOS.indexOf(a) - ORDEN_GRUPOS.indexOf(b); });
+    return tipos.map(function (t) { return Object.assign({ tipo: t }, actual(grupos[t])); });
+  }
+  // price rows of a card: one per gender group when the platform splits them, otherwise General and VIP
+  function filasPrecio(c) {
+    if (c.grupos && c.grupos.length) return c.grupos.map(function (g) { return precioFila(g.tipo, g); }).join("");
+    return precioFila("General", c.general) + precioFila("VIP", c.vip);
   }
   function datosDeLector(j, link) {
     var precios = elegirPrecios(j.ofertas || []);
     return {
       link: link, url: j.url || link, nombre: j.nombre || "", fecha: String(j.inicio || "").slice(0, 10), hora: String(j.inicio || "").slice(11, 16),
-      flyer: j.flyer || "", lugar: j.lugar || "", general: precios.general, vip: precios.vip, actualizado: new Date().toISOString()
+      flyer: j.flyer || "", lugar: j.lugar || "", general: precios.general, vip: precios.vip, grupos: precios.grupos, actualizado: new Date().toISOString()
     };
   }
   function consultarLector(link) {
@@ -1608,7 +1631,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       '<div class="cartel-info">' + (pr ? '<div class="prod-name">' + esc(pr.nombre) + "</div>" : "") +
       '<div class="cartel-fecha">' + esc(fechaLarga(c.fecha, c.hora)) + "</div>" +
       "<h3>" + esc(c.nombre) + "</h3>" +
-      '<div class="precios">' + precioFila("General", c.general) + precioFila("VIP", c.vip) +
+      '<div class="precios">' + filasPrecio(c) +
       (!c.general && !c.vip ? '<div class="hint">Sin precios cargados</div>' : "") + "</div></div></div>" +
       '<div class="cartel-acc">' +
       (c.link ? '<a class="btn ghost sm ir" href="' + esc(c.link) + '" target="_blank" rel="noopener">Ir al evento</a>' : "") +
@@ -1648,7 +1671,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       h += '<div class="cartel preview-cartel">' + '<div class="cartel-top">' +
         (d.flyer ? '<img class="cartel-flyer" src="' + esc(d.flyer) + '" alt="">' : '<div class="cartel-flyer vacio">Sin flyer</div>') +
         '<div class="cartel-info"><div class="cartel-fecha">' + esc(fechaLarga(d.fecha, d.hora)) + "</div><h3>" + esc(d.nombre) + "</h3>" +
-        '<div class="precios">' + precioFila("General", d.general) + precioFila("VIP", d.vip) + "</div></div></div></div>";
+        '<div class="precios">' + filasPrecio(d) + "</div></div></div></div>";
     }
     if (st.fase === "manual") {
       var g = d && d.general, v = d && d.vip;
@@ -1720,6 +1743,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         link: link && linkValido(link) ? link : (d.link || ""), nombre: nombre, fecha: fecha, hora: document.getElementById("c-hora").value || "",
         general: isNaN(gen) ? null : conMoneda({ nombre: d.general && d.general.precio === gen ? d.general.nombre : "", precio: gen, agotado: false }, d.general),
         vip: isNaN(vip) ? null : conMoneda({ nombre: d.vip && d.vip.precio === vip ? d.vip.nombre : "", precio: vip, agotado: false }, d.vip),
+        // per-gender rows stay only while the prices were not changed by hand
+        grupos: (isNaN(gen) ? !d.general : d.general && d.general.precio === gen) && (isNaN(vip) ? !d.vip : d.vip && d.vip.precio === vip) ? (d.grupos || null) : null,
         actualizado: new Date().toISOString()
       });
     } else {
@@ -1753,7 +1778,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var REFRESCO_MS = 5 * 60 * 1000;
   var auto = { corriendo: false, ultima: null, error: false };
   function claveP(p) { return p ? p.nombre + "|" + p.precio + "|" + p.agotado + "|" + (p.moneda || "") : ""; }
-  function preciosIguales(a, b) { return claveP(a.general) === claveP(b.general) && claveP(a.vip) === claveP(b.vip); }
+  function preciosIguales(a, b) {
+    var g = function (x) { return (x.grupos || []).map(function (p) { return p.tipo + "|" + claveP(p); }).join(";"); };
+    return claveP(a.general) === claveP(b.general) && claveP(a.vip) === claveP(b.vip) && g(a) === g(b);
+  }
   function ultimaActualizacion() {
     if (auto.ultima) return auto.ultima;
     var t = 0;
