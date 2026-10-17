@@ -1233,19 +1233,22 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
     h += viewProductoras();
 
-    if (!EN_SITIO) h += viewCopia();
+    // backups: in the old app, and on the test site (staging) to load data into a test account; hidden on bpmtickets.com.ar
+    if (!EN_SITIO || STAGING) h += viewCopia();
     h += viewInstalar() + accionesCuenta() + '<p class="version">V ' + VERSION_APP + "</p>";
     return h;
   }
   // Backup to a file: only on the old copy of the app, where data lives on the phone
   function viewCopia() {
     var h = '<section class="card"><h2>Copia de seguridad</h2>' +
-      "<p>Tus datos se guardan solo en este celular. Guardá una copia de vez en cuando (en Archivos o iCloud Drive) para no perderlos si borrás la app o cambiás de teléfono.</p>" +
-      '<p>Última copia: <b>' + (data.ultimaCopia ? fechaCorta(data.ultimaCopia.slice(0, 10)) : "nunca") + "</b></p>" +
+      (EN_SITIO
+        ? "<p>Cargá una copia de seguridad (el archivo <b>.json</b>) para traer esos datos a esta cuenta: Mi Rendimiento, productoras, tu % y, si la copia los trae, tus Eventos. También podés guardar una copia de lo que tenés acá.</p>"
+        : "<p>Tus datos se guardan solo en este celular. Guardá una copia de vez en cuando (en Archivos o iCloud Drive) para no perderlos si borrás la app o cambiás de teléfono.</p>" +
+          '<p>Última copia: <b>' + (data.ultimaCopia ? fechaCorta(data.ultimaCopia.slice(0, 10)) : "nunca") + "</b></p>") +
       (copiaPendiente() ? '<div class="banner">' + (data.ultimaCopia ? "Hace más de un mes que no guardás una copia." : "Todavía no guardaste una copia de tus datos.") + "</div>" : "") +
       '<div class="row">' +
       '<button class="btn" type="button" data-action="export-json"' + (data.eventos.length ? "" : " disabled") + ">Guardar copia</button>" +
-      '<label class="btn ghost file-btn">Restaurar copia<input type="file" id="import-file" accept=".json,application/json"></label>' +
+      '<label class="btn ghost file-btn">' + (EN_SITIO ? "Cargar copia" : "Restaurar copia") + '<input type="file" id="import-file" accept=".json,application/json"></label>' +
       "</div>";
     if (ui.pendingImport) {
       var n = ui.pendingImport.eventos.length;
