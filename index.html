@@ -344,6 +344,28 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 /* Test copy (staging.bpmtickets.com.ar): always visible label */
 .staging-marca { position: fixed; top: calc(4px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 40; pointer-events: none;
   background: var(--warn); color: #1a1200; font-size: 10px; font-weight: 800; letter-spacing: .12em; padding: 2px 10px; border-radius: 999px; }
+/* Premium */
+.premium-tag { display: inline-block; vertical-align: middle; margin-left: 6px; font-size: 10px; font-weight: 800; letter-spacing: .1em; color: var(--accent-ink); background: var(--accent); border-radius: 999px; padding: 2px 8px; }
+.historia-prev { display: grid; place-items: center; min-height: 240px; }
+.historia-prev img { display: block; max-width: 100%; max-height: 56vh; aspect-ratio: 9 / 16; border-radius: 14px; border: 1px solid var(--line); }
+.historia-acc .btn { flex: 1 1 0; }
+.pagina-stats { gap: 14px; }
+.vis-titulo { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: -6px; }
+.vis-graf { display: flex; align-items: stretch; gap: 2px; height: 120px; border-bottom: 1px solid var(--line); }
+.vis-col { flex: 1 1 0; min-width: 0; background: none; border: 0; padding: 0; display: flex; align-items: flex-end; }
+.vis-col span { display: block; width: 100%; background: var(--accent); border-radius: 4px 4px 0 0; }
+.vis-col:hover span, .vis-col[aria-pressed="true"] span { background: var(--fg); }
+.vis-eje { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: -8px; }
+.vis-dato { font-size: 13px; color: var(--fg); min-height: 1.3em; margin-top: -6px; }
+.vis-sub { margin: 0; font-size: 14px; }
+.vis-eventos { display: flex; flex-direction: column; gap: 6px; margin-top: -4px; }
+.vis-ev { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.vis-ev span { min-width: 0; overflow-wrap: anywhere; }
+.vis-ev b { font-variant-numeric: tabular-nums; }
+.vis-tabla summary { font-size: 13px; font-weight: 600; color: var(--accent); cursor: pointer; }
+.vis-tabla table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+.vis-tabla th, .vis-tabla td { text-align: left; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.vis-tabla td:last-child, .vis-tabla th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
 /* Admin */
 .admin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: -6px; }
 .admin-top .link-btn { font-size: 15px; }
@@ -457,7 +479,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var storageOk = true;
-  var VERSION = 60; // bumped with sw.js on every change so phones pick it up
+  var VERSION = 61; // bumped with sw.js on every change so phones pick it up
   var VERSION_APP = "1.0.0"; // the one shown in Ajustes
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, buscarEv: "", filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
@@ -695,7 +717,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (!EN_SITIO) html += bannerMudanza();
     if (ui.view === "fechas") html += viewFechas();
     else if (ui.view === "cartelera") html += viewCartelera();
-    else if (ui.view === "rendimiento") html += viewRendimiento();
+    else if (ui.view === "rendimiento") { cargarPagina(); html += viewRendimiento(); }
     else if (ui.view === "admin") html += viewAdmin();
     else html += viewAjustes();
     return '<div class="stack">' + html + "</div>";
@@ -870,17 +892,18 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   }
 
   function viewRendimiento() {
+    var pagH = seccionPagina();
     if (!data.eventos.length) {
-      return '<div class="empty"><strong>Sin datos todavía</strong>Cuando cargues tus eventos vas a ver acá cuáles vendieron más, tu precio promedio por entrada y lo que ganaste por mes.</div>';
+      return pagH + '<div class="empty"><strong>Sin datos todavía</strong>Cuando cargues tus eventos vas a ver acá cuáles vendieron más, tu precio promedio por entrada y lo que ganaste por mes.</div>';
     }
     var evs = eventosRendimiento();
-    var h = '<div class="section-h"><h2>Estadísticas</h2>' + botonFiltro("rend") + "</div>";
+    var h = pagH + '<div class="section-h"><h2>Estadísticas</h2>' + botonFiltro("rend") + "</div>";
     h += ui.panelRend ? panelFiltro("rend") : resumenFiltro("rend");
     if (!evs.length) return h + '<div class="empty">No hay eventos en ese período.</div>';
     var t = totales(evs);
     var prom = t.entradas / evs.length;
     var ticket = t.entradas ? t.facturado / t.entradas : 0;
-    h += '<div class="tiles">' +
+    h += '<div class="tiles rend-tiles">' +
       tile(intf.format(evs.length), evs.length === 1 ? "Evento Trabajado" : "Eventos Trabajados") +
       tile(intf.format(t.entradas), "Entradas Vendidas") +
       tile(money.format(t.facturado), "Monto Vendido") +
@@ -946,6 +969,199 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   function tile(v, k) {
     return '<div class="tile"><h3 class="k">' + k + '</h3><div class="v num">' + v + "</div></div>";
+  }
+
+  // ---------- Premium: stats of the RRPP's public page (visits and taps on "Comprar entradas") ----------
+  var pag = { estado: "", datos: null, t: 0 };
+  function cargarPagina(forzar) {
+    if (!EN_SITIO || !cuenta || !cuenta.slug || pag.estado === "cargando") return;
+    if (!forzar && pag.datos && Date.now() - pag.t < 60000) return;
+    pag.estado = "cargando";
+    api("/api/pagina").then(function (j) {
+      pag.datos = j; pag.t = Date.now(); pag.estado = "";
+      if (ui.view === "rendimiento") renderSinTocarPanel();
+    }, function () { pag.estado = "error"; if (ui.view === "rendimiento") renderSinTocarPanel(); });
+  }
+  var DIAS_CORTO = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+  function diaTexto(iso) { var p = partes(iso); return DIAS_CORTO[new Date(p.y, p.m - 1, p.d).getDay()] + " " + p.d + " " + MESES[p.m - 1]; }
+  function seccionPagina() {
+    if (!EN_SITIO || !cuenta) return "";
+    var h = '<section class="card pagina-stats"><h2>Tu página <span class="premium-tag">PREMIUM</span></h2>';
+    if (!cuenta.slug) return h + '<p class="hint">Creá tu link en <b>Eventos</b> y acá vas a ver cuánta gente entra a tu página y cuántos tocan <b>Comprar entradas</b>.</p></section>';
+    var d = pag.datos;
+    if (!d) return h + '<p class="hint">' + (pag.estado === "error" ? "No pude traer las visitas de tu página. Revisá tu conexión." : "Cargando las visitas de tu página…") + "</p></section>";
+    var tasa = d.visitas30 ? Math.round(d.clics30 / d.visitas30 * 100) : 0;
+    h += '<div class="tiles">' + tile(intf.format(d.visitas7), "Visitas (7 días)") + tile(intf.format(d.visitas30), "Visitas (30 días)") +
+      tile(intf.format(d.clics30), "Toques en Comprar (30 días)") + tile(d.visitas30 ? tasa + "%" : "—", "Visitas que tocan Comprar") + "</div>";
+    // one bar per day; tapping a bar (or hovering it) shows that day's number
+    var max = Math.max.apply(null, d.dias.map(function (x) { return x.vistas; })) || 1;
+    h += '<div class="vis-titulo">Visitas por día · últimos 30 días</div>' +
+      '<div class="vis-graf">' + d.dias.map(function (x) {
+        var txt = diaTexto(x.dia) + ": " + x.vistas + (x.vistas === 1 ? " visita" : " visitas");
+        return '<button type="button" class="vis-col" data-action="vis-dia" data-txt="' + esc(txt) + '" title="' + esc(txt) + '" aria-label="' + esc(txt) + '">' +
+          '<span style="height:' + (x.vistas ? Math.max(3, Math.round(x.vistas / max * 100)) : 0) + '%"></span></button>';
+      }).join("") + "</div>" +
+      '<div class="vis-eje"><span>' + esc(diaTexto(d.dias[0].dia)) + "</span><span>Hoy</span></div>" +
+      '<div class="vis-dato" id="vis-dato">Tocá una barra para ver ese día.</div>';
+    h += '<h3 class="vis-sub">Toques en Comprar por evento (30 días)</h3>';
+    h += d.eventos.length
+      ? '<div class="vis-eventos">' + d.eventos.slice(0, 8).map(function (e) {
+          return '<div class="vis-ev"><span>' + esc(e.nombre) + "</span><b>" + intf.format(e.clics) + "</b></div>";
+        }).join("") + "</div>"
+      : '<p class="hint">Todavía nadie tocó <b>Comprar entradas</b> en tu página.</p>';
+    h += '<details class="vis-tabla"><summary>Ver visitas día por día</summary><table><thead><tr><th>Día</th><th>Visitas</th></tr></thead><tbody>' +
+      d.dias.slice().reverse().map(function (x) { return "<tr><td>" + esc(diaTexto(x.dia)) + "</td><td>" + x.vistas + "</td></tr>"; }).join("") + "</tbody></table></details>";
+    return h + '<p class="hint">Se cuentan las visitas y los toques sin guardar datos de quién entra. Las vistas previas de WhatsApp o Instagram no suman; tus propias visitas sí.</p></section>';
+  }
+
+  // ---------- Premium: Instagram story (1080×1920, 9:16) from an event card ----------
+  var historia = { blob: null, url: null, nombre: "" };
+  function cargarImagen(src) {
+    return new Promise(function (ok) {
+      if (!src) { ok(null); return; }
+      var im = new Image();
+      im.onload = function () { ok(im); };
+      im.onerror = function () { ok(null); };
+      im.src = src;
+    });
+  }
+  function formaRedondeada(ctx, x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  // splits a text into lines that fit; the last allowed line ends in "…" when it doesn't all fit
+  function lineasCanvas(ctx, texto, ancho, max) {
+    var palabras = String(texto).split(/\s+/).filter(Boolean), lineas = [], actual = "";
+    palabras.forEach(function (p) {
+      var prueba = actual ? actual + " " + p : p;
+      if (ctx.measureText(prueba).width <= ancho || !actual) actual = prueba; else { lineas.push(actual); actual = p; }
+    });
+    if (actual) lineas.push(actual);
+    if (lineas.length > max) {
+      lineas = lineas.slice(0, max);
+      var ult = lineas[max - 1];
+      while (ult.length > 1 && ctx.measureText(ult + "…").width > ancho) ult = ult.slice(0, -1);
+      lineas[max - 1] = ult.replace(/\s+$/, "") + "…";
+    }
+    return lineas;
+  }
+  function generarHistoria(c) {
+    // the flyer comes through our own server so the image can be saved (other sites' images can't be exported)
+    var fuente = c.flyer && EN_SITIO ? "/flyer?url=" + encodeURIComponent(c.flyer) : "";
+    var fuentes = document.fonts && document.fonts.load
+      ? Promise.all([document.fonts.load('800 92px "Big Shoulders Display"'), document.fonts.load('700 44px "Archivo"'), document.fonts.load('600 38px "Archivo"')]).catch(function () {})
+      : Promise.resolve();
+    return Promise.all([cargarImagen(fuente), fuentes]).then(function (r) {
+      var img = r[0], W = 1080, H = 1920, X = 90, ANCHO = 900;
+      var cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+      var ctx = cv.getContext("2d");
+      ctx.fillStyle = "#100e15"; ctx.fillRect(0, 0, W, H);
+      if (img) {
+        // blurred flyer as background: a tiny copy stretched to the whole story
+        var mini = document.createElement("canvas"); mini.width = 27; mini.height = 48;
+        var mc = mini.getContext("2d"), e1 = Math.max(27 / img.width, 48 / img.height);
+        mc.drawImage(img, (27 - img.width * e1) / 2, (48 - img.height * e1) / 2, img.width * e1, img.height * e1);
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+        ctx.globalAlpha = 0.6; ctx.drawImage(mini, 0, 0, W, H); ctx.globalAlpha = 1;
+      }
+      var g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, "rgba(16,14,21,0.45)"); g.addColorStop(0.45, "rgba(16,14,21,0.72)"); g.addColorStop(1, "rgba(16,14,21,0.97)");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+      // text block, measured first so the flyer gets the room left above it
+      var filas = c.grupos && c.grupos.length ? c.grupos.map(function (p) { return [p.tipo, p]; })
+        : [["General", c.general], ["VIP", c.vip]].filter(function (f) { return f[1]; });
+      ctx.font = '800 96px "Big Shoulders Display", "Arial Narrow", sans-serif';
+      var titulo = lineasCanvas(ctx, String(c.nombre || "").toUpperCase(), ANCHO, 3);
+      var hFecha = 64, hTitulo = titulo.length * 96 + 14, hLugar = c.lugar ? 56 : 0, hPrecios = filas.length ? filas.length * 92 + 36 : 0;
+      var yCta = 1560, hCta = 112;
+      var yTexto = yCta - 56 - (hFecha + hTitulo + hLugar + (hPrecios ? hPrecios + 28 : 0));
+      var arriba = 250, altoFlyer = yTexto - 48 - arriba;
+      if (img && altoFlyer > 220) {
+        var s = Math.min(ANCHO / img.width, altoFlyer / img.height), fw = img.width * s, fh = img.height * s;
+        var fx = (W - fw) / 2, fy = arriba + (altoFlyer - fh) / 2;
+        ctx.save(); ctx.shadowColor = "rgba(0,0,0,0.55)"; ctx.shadowBlur = 50; ctx.shadowOffsetY = 18;
+        formaRedondeada(ctx, fx, fy, fw, fh, 28); ctx.fillStyle = "#100e15"; ctx.fill(); ctx.restore();
+        ctx.save(); formaRedondeada(ctx, fx, fy, fw, fh, 28); ctx.clip(); ctx.drawImage(img, fx, fy, fw, fh); ctx.restore();
+      } else if (!img) {
+        // no flyer: the app's ticket, big, where the flyer would go
+        var tw = 420, th = tw * 0.62, tx = (W - tw) / 2, ty = arriba + Math.max(0, (altoFlyer - th) / 2);
+        formaRedondeada(ctx, tx, ty, tw, th, 38); ctx.fillStyle = "#39ff7f"; ctx.fill();
+      }
+      var y = yTexto;
+      ctx.textBaseline = "top"; ctx.textAlign = "left";
+      ctx.fillStyle = "#39ff7f"; ctx.font = '700 46px "Archivo", system-ui, sans-serif';
+      ctx.fillText(fechaLarga(c.fecha, c.hora), X, y); y += hFecha;
+      ctx.fillStyle = "#f3f0f7"; ctx.font = '800 96px "Big Shoulders Display", "Arial Narrow", sans-serif';
+      titulo.forEach(function (l) { ctx.fillText(l, X, y); y += 96; }); y += 14;
+      if (c.lugar) {
+        ctx.fillStyle = "#a7a0b4"; ctx.font = '600 38px "Archivo", system-ui, sans-serif';
+        ctx.fillText(lineasCanvas(ctx, c.lugar, ANCHO, 1)[0], X, y); y += hLugar;
+      }
+      if (filas.length) {
+        y += 28;
+        formaRedondeada(ctx, X - 10, y, ANCHO + 20, hPrecios, 28);
+        ctx.fillStyle = "rgba(27,24,35,0.88)"; ctx.fill(); ctx.strokeStyle = "#363042"; ctx.lineWidth = 2; ctx.stroke();
+        var yf = y + 18;
+        filas.forEach(function (f, i) {
+          if (i) { ctx.strokeStyle = "#363042"; ctx.setLineDash([8, 8]); ctx.beginPath(); ctx.moveTo(X + 20, yf); ctx.lineTo(X + ANCHO - 20, yf); ctx.stroke(); ctx.setLineDash([]); }
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = "#f3f0f7"; ctx.font = '600 40px "Archivo", system-ui, sans-serif'; ctx.textAlign = "left";
+          ctx.fillText(f[0], X + 26, yf + 46);
+          ctx.textAlign = "right"; ctx.font = '700 48px "Archivo", system-ui, sans-serif';
+          ctx.fillStyle = f[1].agotado ? "#ff6b6b" : "#39ff7f";
+          ctx.fillText(f[1].agotado ? "AGOTADO" : precioTexto(f[1]), X + ANCHO - 26, yf + 46);
+          yf += 92;
+        });
+        ctx.textAlign = "left"; ctx.textBaseline = "top";
+      }
+      // call to action, inside the part of the screen Instagram leaves free
+      formaRedondeada(ctx, X, yCta, ANCHO, hCta, 56); ctx.fillStyle = "#39ff7f"; ctx.fill();
+      ctx.fillStyle = "#04210f"; ctx.font = '800 54px "Big Shoulders Display", "Arial Narrow", sans-serif';
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("ENTRADAS EN MI LINK", W / 2, yCta + hCta / 2 + 2);
+      var link = linkPublico().replace("https://", "");
+      ctx.fillStyle = "#a7a0b4"; ctx.font = '600 32px "Archivo", system-ui, sans-serif';
+      ctx.fillText(link ? link : "BPM TICKETS", W / 2, yCta + hCta + 44);
+      return cv;
+    });
+  }
+  function abrirHistoria(id) {
+    var c = data.cartelera.find(function (x) { return x.id === id; });
+    if (!c) return;
+    if (historia.url) URL.revokeObjectURL(historia.url);
+    historia = { blob: null, url: null, nombre: "historia-" + (slugDe(c.nombre) || "evento") + ".png" };
+    $sheetRoot.innerHTML = '<div class="scrim" data-action="close-bg"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="h-title">' +
+      '<div class="sheet-h"><h2 id="h-title">Historia para Instagram <span class="premium-tag">PREMIUM</span></h2><button type="button" class="x" data-action="close" aria-label="Cerrar">✕</button></div>' +
+      '<div class="historia-prev" id="h-prev"><div class="c-estado">Armando tu historia…</div></div>' +
+      '<div class="row historia-acc"><button class="btn" type="button" data-action="historia-compartir" disabled>Compartir</button>' +
+      '<button class="btn ghost" type="button" data-action="historia-descargar" disabled>Guardar imagen</button></div>' +
+      (linkPublico() ? '<p class="hint">En Instagram, sumá el sticker de <b>Link</b> con tu página. <button type="button" class="link-btn" data-action="link-copiar">Copiar mi link</button></p>' : "") +
+      "</div></div>";
+    generarHistoria(c).then(function (cv) {
+      return new Promise(function (ok, mal) { try { cv.toBlob(function (b) { if (b) ok(b); else mal(); }, "image/png"); } catch (e) { mal(e); } });
+    }).then(function (blob) {
+      var prev = document.getElementById("h-prev");
+      if (!prev) return;
+      historia.blob = blob; historia.url = URL.createObjectURL(blob);
+      prev.innerHTML = '<img src="' + historia.url + '" alt="Vista previa de la historia de ' + esc(c.nombre) + '">';
+      document.querySelectorAll('[data-action="historia-compartir"],[data-action="historia-descargar"]').forEach(function (b) { b.disabled = false; });
+    }, function () {
+      var prev = document.getElementById("h-prev");
+      if (prev) prev.innerHTML = '<div class="err">No pude armar la historia. Probá de nuevo.</div>';
+    });
+  }
+  function compartirHistoria() {
+    if (!historia.blob) return;
+    var file = null;
+    try { file = new File([historia.blob], historia.nombre, { type: "image/png" }); } catch (e) { file = null; }
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file] }).catch(function () {});
+      return;
+    }
+    descargar(historia.blob, historia.nombre);
+    toast("Imagen guardada. Subila a tus historias desde Instagram.");
   }
 
   // ---------- Admin (only the owner's account): who uses the app ----------
@@ -1721,6 +1937,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       (!c.general && !c.vip ? '<div class="hint">Sin precios cargados</div>' : "") + "</div></div></div>" +
       '<div class="cartel-acc">' +
       (c.link ? '<a class="btn ghost sm ir" href="' + esc(c.link) + '" target="_blank" rel="noopener">Ir al evento</a>' : "") +
+      '<button type="button" class="btn ghost sm" data-action="historia" data-id="' + id + '">Historia</button>' +
       (c.link && LECTOR_URL ? '<button type="button" class="icon-btn sq" data-cartel-actualizar="' + id + '" aria-label="Actualizar precios">' + ICONO_ACTUALIZAR + "</button>" : "") +
       '<button type="button" class="icon-btn sq borrar" data-cartel-borrar="' + id + '" aria-label="Eliminar evento">' + ICONO_BORRAR + "</button>" +
       "</div>" +
@@ -1995,7 +2212,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       { titulo: "Facturar y cobrar", texto: "Si una productora pide factura, sus eventos pasan por <b>Facturada</b> antes de <b>Cobrada</b>. Eso se configura en <b>Ajustes → Mis productoras</b>." }
     ];
     if (v === "rendimiento") return data.eventos.length ? [
-      { sel: ".tiles", titulo: "Tus números", texto: "Eventos trabajados, entradas vendidas, monto vendido, comisión y promedios, todo junto." },
+      { sel: ".rend-tiles", titulo: "Tus números", texto: "Eventos trabajados, entradas vendidas, monto vendido, comisión y promedios, todo junto." },
       { sel: '[data-panel="rend"]', titulo: "Elegí el período", texto: "Mirá este mes, el mes pasado, los últimos 3 meses, el año o fechas exactas." },
       { sel: ".rank", titulo: "Tus mejores eventos", texto: "Ordenalos por entradas vendidas o por monto vendido." },
       { sel: ".table-wrap", titulo: "Por productora y por mes", texto: "Cuánto ganaste y cuánto tenés por cobrar todavía, separado por productora y por mes." }
@@ -2628,6 +2845,14 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     else if (a === "link-compartir") compartirLink();
     else if (a === "link-copiar") copiarTexto(linkPublico());
     else if (a === "salir") salir();
+    else if (a === "historia") abrirHistoria(t.getAttribute("data-id"));
+    else if (a === "historia-compartir") compartirHistoria();
+    else if (a === "historia-descargar") { if (historia.blob) descargar(historia.blob, historia.nombre); }
+    else if (a === "vis-dia") {
+      document.querySelectorAll(".vis-col[aria-pressed]").forEach(function (b) { b.removeAttribute("aria-pressed"); });
+      t.setAttribute("aria-pressed", "true");
+      var vd = document.getElementById("vis-dato"); if (vd) vd.textContent = t.getAttribute("data-txt");
+    }
     else if (a === "admin-abrir" || a === "admin-recargar") abrirAdmin();
     else if (a === "admin-volver") { ui.view = "ajustes"; render(); document.getElementById("scroller").scrollTop = 0; }
     else if (a === "cuenta-borrar") { ui.borrarCuenta = true; render(); var bc = document.querySelector(".acciones-cuenta .sheet-confirm"); if (bc) bc.scrollIntoView({ block: "nearest", behavior: "smooth" }); }

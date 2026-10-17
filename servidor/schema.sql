@@ -62,3 +62,18 @@ CREATE TABLE IF NOT EXISTS rendimiento (
 
 -- v4: secciones del tutorial que la cuenta ya vio (JSON), para mostrarlo una sola vez en cualquier dispositivo
 ALTER TABLE users ADD COLUMN tutorial TEXT;
+
+-- v5 (rama plan-premium): estadísticas de la página pública, solo contadores por día (sin datos de los visitantes)
+CREATE TABLE IF NOT EXISTS visitas (
+  sub TEXT NOT NULL,
+  dia TEXT NOT NULL,             -- AAAA-MM-DD (hora de Argentina)
+  vistas INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (sub, dia)
+);
+CREATE TABLE IF NOT EXISTS clics (
+  sub TEXT NOT NULL,
+  dia TEXT NOT NULL,
+  evento TEXT NOT NULL,          -- id del evento en la lista del RRPP
+  clics INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (sub, dia, evento)
+);

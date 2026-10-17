@@ -535,7 +535,9 @@ async function limpiarViejos(env) {
     env.DB.prepare("DELETE FROM sessions WHERE expira < ?").bind(ahora),
     env.DB.prepare("DELETE FROM codigos WHERE expira < ?").bind(ahora),
     env.DB.prepare("DELETE FROM limites WHERE desde < ?").bind(ahora - 24 * HORA_MS),
-    env.DB.prepare("DELETE FROM traspasos WHERE creado < ?").bind(ahora - 30 * 24 * HORA_MS)
+    env.DB.prepare("DELETE FROM traspasos WHERE creado < ?").bind(ahora - 30 * 24 * HORA_MS),
+    env.DB.prepare("DELETE FROM visitas WHERE dia < ?").bind(diaMenos(120)),
+    env.DB.prepare("DELETE FROM clics WHERE dia < ?").bind(diaMenos(120))
   ]);
 }
 // "@juan.rrpp", "instagram.com/juan.rrpp/" -> "juan.rrpp"; null if it isn't a valid handle, "" if empty
@@ -712,6 +714,44 @@ function redesHTML(u) {
     (u.whatsapp ? '<a class="red" href="https://wa.me/' + esc(u.whatsapp) + '?text=' + encodeURIComponent("Hola! Vi tus eventos y quiero entradas") + '" target="_blank" rel="noopener">' + ICONO_WA + "<span>WhatsApp</span></a>" : "") +
     "</div>";
 }
+// ---------- page stats (Premium): visits to a RRPP's page and taps on "Comprar entradas" ----------
+// Only daily counters are kept (no IPs, no cookies, nothing about the visitor). Link previews and bots don't count.
+const BOTS = /bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|discord|slack|twitter|linkedin|embedly|headless|lighthouse|curl|wget|python|node-fetch/i;
+function esBot(req) {
+  const ua = req.headers.get("User-Agent") || "";
+  return !ua || BOTS.test(ua) || /prefetch|prerender/i.test(req.headers.get("Sec-Purpose") || req.headers.get("Purpose") || "");
+}
+async function contarVisita(env, sub) {
+  await env.DB.prepare("INSERT INTO visitas (sub, dia, vistas) VALUES (?, ?, 1) ON CONFLICT(sub, dia) DO UPDATE SET vistas = vistas + 1").bind(sub, hoyAR()).run();
+}
+async function contarClic(env, sub, evento) {
+  await env.DB.prepare("INSERT INTO clics (sub, dia, evento, clics) VALUES (?, ?, ?, 1) ON CONFLICT(sub, dia, evento) DO UPDATE SET clics = clics + 1").bind(sub, hoyAR(), evento).run();
+}
+function diaMenos(dias) { return new Date(Date.now() - 3 * HORA_MS - dias * 24 * HORA_MS).toISOString().slice(0, 10); }
+async function estadisticasPagina(env, sub) {
+  const desde = diaMenos(29);
+  const [vis, cli, lista] = await Promise.all([
+    env.DB.prepare("SELECT dia, vistas FROM visitas WHERE sub = ? AND dia >= ? ORDER BY dia").bind(sub, desde).all(),
+    env.DB.prepare("SELECT evento, SUM(clics) AS clics, SUM(CASE WHEN dia >= ? THEN clics ELSE 0 END) AS semana FROM clics WHERE sub = ? AND dia >= ? GROUP BY evento").bind(diaMenos(6), sub, desde).all(),
+    leerLista(env, sub)
+  ]);
+  const porDia = new Map(vis.results.map(f => [f.dia, f.vistas]));
+  const dias = [];
+  for (let i = 29; i >= 0; i--) { const d = diaMenos(i); dias.push({ dia: d, vistas: porDia.get(d) || 0 }); }
+  const nombres = new Map(lista.map(c => [c.id, c]));
+  const eventos = cli.results.map(f => {
+    const c = nombres.get(f.evento);
+    return { id: f.evento, nombre: c ? c.nombre : "Evento eliminado", fecha: c ? c.fecha : "", clics: f.clics, semana: f.semana };
+  }).sort((a, b) => b.clics - a.clics);
+  const suma = (lista2, k) => lista2.reduce((s, x) => s + (x[k] || 0), 0);
+  return {
+    dias,
+    visitas30: suma(dias, "vistas"), visitas7: suma(dias.slice(-7), "vistas"),
+    clics30: suma(eventos, "clics"), clics7: suma(eventos, "semana"),
+    eventos
+  };
+}
+
 function paginaHTML(lista, u, nonce) {
   const tarjetas = lista.map(c => {
     const agotado = c.grupos && c.grupos.length ? c.grupos.every(g => g.agotado)
@@ -720,7 +760,8 @@ function paginaHTML(lista, u, nonce) {
       (c.flyer ? '<img src="' + esc(c.flyer) + '" alt="Flyer de ' + esc(c.nombre) + '" loading="lazy">' : "") +
       '<div class="info"><div class="fecha">' + esc(fechaLarga(c.fecha, c.hora)) + "</div><h2>" + esc(c.nombre) + "</h2>" +
       '<div class="precios">' + (c.grupos && c.grupos.length ? c.grupos.map(g => filaPrecio(g.tipo, g)).join("") : filaPrecio("General", c.general) + filaPrecio("VIP", c.vip)) + "</div>" +
-      (c.link ? '<a class="comprar' + (agotado ? " off" : "") + '" href="' + esc(c.link) + '" rel="noopener">' + (agotado ? "Ver evento" : "Comprar entradas") + "</a>" : "") +
+      // the button goes through /ir/… so the tap is counted, then straight on to the RRPP's own ticket link
+      (c.link ? '<a class="comprar' + (agotado ? " off" : "") + '" href="/ir/' + esc(u.slug) + "/" + esc(encodeURIComponent(c.id)) + '" rel="noopener">' + (agotado ? "Ver evento" : "Comprar entradas") + "</a>" : "") +
       "</div></article>";
   }).join("");
   return `<!doctype html>
@@ -1057,6 +1098,9 @@ export default {
           await env.DB.prepare("UPDATE users SET tutorial = ? WHERE sub = ?").bind(JSON.stringify(vistas), u.sub).run();
           return json(env, { ok: true, tutorial: vistas });
         }
+        if (ruta === "/api/pagina" && req.method === "GET") {
+          return json(env, Object.assign({ ok: true }, await estadisticasPagina(env, u.sub)));
+        }
         if (ruta === "/api/yo" && req.method === "GET") {
           return json(env, { ok: true, usuario: usuarioPublico(u, env), eventos: await leerLista(env, u.sub) });
         }
@@ -1120,6 +1164,8 @@ export default {
             env.DB.prepare("DELETE FROM eventos WHERE sub = ?").bind(u.sub),
             env.DB.prepare("DELETE FROM rendimiento WHERE sub = ?").bind(u.sub),
             env.DB.prepare("DELETE FROM traspasos WHERE sub = ?").bind(u.sub),
+            env.DB.prepare("DELETE FROM visitas WHERE sub = ?").bind(u.sub),
+            env.DB.prepare("DELETE FROM clics WHERE sub = ?").bind(u.sub),
             env.DB.prepare("DELETE FROM codigos WHERE email = ?").bind(u.email),
             env.DB.prepare("DELETE FROM sessions WHERE sub = ?").bind(u.sub),
             env.DB.prepare("DELETE FROM users WHERE sub = ?").bind(u.sub)
@@ -1138,13 +1184,36 @@ export default {
 
       if (ruta === "/robots.txt") return new Response("User-agent: *\nDisallow: /api/\nDisallow: /lector\n", { headers: { "Content-Type": "text/plain" } });
 
+      // ----- "Comprar entradas" on a public page: count the tap, then go to the RRPP's ticket link -----
+      const ir = ruta.match(/^\/ir\/([a-z0-9-]{3,48})\/([^/]{1,80})$/);
+      if (ir && req.method === "GET") {
+        const u = await env.DB.prepare("SELECT sub FROM users WHERE slug = ?").bind(ir[1]).first();
+        if (!u) return pagina404();
+        const idEv = decodeURIComponent(ir[2]);
+        const c = (await leerLista(env, u.sub)).find(x => x.id === idEv);
+        if (!c || !linkPermitido(c.link)) return Response.redirect(linkDe(env, ir[1]), 302);
+        if (!esBot(req)) ctx.waitUntil(contarClic(env, u.sub, idEv).catch(() => {}));
+        return new Response(null, { status: 302, headers: Object.assign({}, SEGURIDAD, { Location: c.link, "Cache-Control": "no-store" }) });
+      }
+
+      // ----- flyer copy for the app (same site, so it can be drawn into an Instagram story image) -----
+      if (ruta === "/flyer" && req.method === "GET") {
+        const fuente = url.searchParams.get("url") || "";
+        if (!imagenPermitida(fuente) || !pidioLaApp(req, env)) return json(env, { ok: false, error: "imagen" }, 400);
+        const r = await fetch(fuente, { headers: { "User-Agent": UA }, cf: { cacheTtl: 86400, cacheEverything: true } });
+        const tipo = r.headers.get("Content-Type") || "";
+        if (!r.ok || !/^image\//i.test(tipo)) return json(env, { ok: false, error: "imagen" }, 502);
+        return new Response(r.body, { headers: Object.assign({}, SEGURIDAD, { "Content-Type": tipo, "Cache-Control": "private, max-age=86400" }) });
+      }
+
       // ----- public page of a RRPP: /eventos/juan-perez (or ?id=… when two RRPPs share a name) -----
       const pub = ruta.match(/^\/eventos\/([a-z0-9-]{3,40})\/?$/);
       if (pub && req.method === "GET") {
         const id = (url.searchParams.get("id") || "").toLowerCase();
         if (id && !/^[a-z0-9]{2,8}$/.test(id)) return pagina404();
-        const u = await env.DB.prepare("SELECT sub, instagram, whatsapp FROM users WHERE slug = ?").bind(id ? pub[1] + "--" + id : pub[1]).first();
+        const u = await env.DB.prepare("SELECT sub, slug, instagram, whatsapp FROM users WHERE slug = ?").bind(id ? pub[1] + "--" + id : pub[1]).first();
         if (!u) return pagina404();
+        if (!esBot(req)) ctx.waitUntil(contarVisita(env, u.sub).catch(() => {}));
         const hoy = hoyAR();
         const lista = (await leerLista(env, u.sub))
           .filter(c => !c.fecha || c.fecha >= hoy)
