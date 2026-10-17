@@ -344,6 +344,30 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 /* Test copy (staging.bpmtickets.com.ar): always visible label */
 .staging-marca { position: fixed; top: calc(4px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 40; pointer-events: none;
   background: var(--warn); color: #1a1200; font-size: 10px; font-weight: 800; letter-spacing: .12em; padding: 2px 10px; border-radius: 999px; }
+/* Team of públicas */
+.modo-stats { margin-bottom: -6px; }
+.modo-stats .chip { flex: 1 1 0; text-align: center; font-weight: 600; }
+.equipo-sub { margin: 4px 0 0; font-size: 15px; }
+.equipo-inv { background: var(--surface-2); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.equipo-inv p { margin: 0; }
+.equipo-lista { display: flex; flex-direction: column; gap: 8px; }
+.equipo-m { display: flex; align-items: center; gap: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.equipo-nom { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.equipo-nom b, .equipo-nom span { overflow-wrap: anywhere; }
+.equipo-nom span { font-size: 12px; color: var(--muted); }
+.equipo-estado { flex: 0 0 auto; font-size: 11px; font-weight: 700; color: var(--warn); border: 1px solid currentColor; border-radius: 999px; padding: 2px 8px; }
+.equipo-estado.activo { color: var(--accent); }
+.equipo-m .link-btn { flex: 0 0 auto; }
+.equipo-detalles { display: flex; flex-direction: column; gap: 10px; }
+.equipo-det { gap: 10px; }
+.equipo-det summary { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; cursor: pointer; list-style: none; }
+.equipo-det summary::-webkit-details-marker { display: none; }
+.equipo-det summary b { min-width: 0; overflow-wrap: anywhere; }
+.equipo-det summary span { flex: 0 0 auto; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.equipo-det[open] summary { margin-bottom: 10px; }
+.equipo-mini { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+.equipo-mini b { color: var(--fg); font-weight: 600; }
+.equipo-aviso b { color: inherit; }
 /* Admin */
 .admin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: -6px; }
 .admin-top .link-btn { font-size: 15px; }
@@ -457,10 +481,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var storageOk = true;
-  var VERSION = 60; // bumped with sw.js on every change so phones pick it up
+  var VERSION = 62; // bumped with sw.js on every change so phones pick it up
   var VERSION_APP = "1.0.0"; // the one shown in Ajustes
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
-    filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, buscarEv: "", filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
+    filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, buscarEv: "", filtroRend: { desde: "", hasta: "" }, panelRend: false, statsModo: "equipo", cartelBorrar: null, cartelProd: "" };
 
   var $main = document.getElementById("main");
   var $fab = document.getElementById("fab");
@@ -676,7 +700,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
     // backup reminder lives in Ajustes; the tab shows a dot when a copy is due
     var tabAjustes = document.querySelector('.nav [data-view="ajustes"]');
-    if (tabAjustes) tabAjustes.classList.toggle("aviso", copiaPendiente());
+    if (tabAjustes) tabAjustes.classList.toggle("aviso", copiaPendiente() || hayInvitaciones());
 
     var prevPct = document.getElementById("pct-input");
     var keep = prevPct && document.activeElement === prevPct ? prevPct.value : null;
@@ -693,9 +717,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       html += '<div class="banner">Este navegador no deja guardar datos (¿modo privado?). Abrí la app desde el ícono de inicio o desde Safari normal.</div>';
     }
     if (!EN_SITIO) html += bannerMudanza();
+    if (ui.view !== "ajustes") html += avisoEquipo();
     if (ui.view === "fechas") html += viewFechas();
     else if (ui.view === "cartelera") html += viewCartelera();
-    else if (ui.view === "rendimiento") html += viewRendimiento();
+    else if (ui.view === "rendimiento") html += vistaEstadisticas();
     else if (ui.view === "admin") html += viewAdmin();
     else html += viewAjustes();
     return '<div class="stack">' + html + "</div>";
@@ -948,6 +973,142 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     return '<div class="tile"><h3 class="k">' + k + '</h3><div class="v num">' + v + "</div></div>";
   }
 
+  // ---------- team of públicas: a jefe invites RRPPs by mail, they accept, and the jefe sees the team's sales ----------
+  var equipo = { datos: null };
+  var equipoStats = { clave: "", datos: null, estado: "", t: 0 };
+  var ERRORES_EQUIPO = {
+    email: "Revisá el mail: parece que está mal escrito.",
+    vos: "No te podés invitar a vos.",
+    "ya-miembro": "Ese RRPP ya está en tu equipo.",
+    "ya-invitado": "Ya lo invitaste: falta que acepte desde su app.",
+    lleno: "Llegaste al máximo de 100 RRPPs por equipo.",
+    limite: "Mandaste muchas invitaciones hoy. Probá de nuevo mañana.",
+    "ya-en-equipo": "Ya estás en un equipo. Salí del actual para sumarte a otro.",
+    invitacion: "Esa invitación ya no existe."
+  };
+  function cargarEquipo() {
+    if (!EN_SITIO || !cuenta) return;
+    api("/api/equipo").then(function (j) { equipo.datos = j; render(); }, function () {});
+  }
+  function esJefe() { return !!(equipo.datos && equipo.datos.miembros.length); }
+  function hayInvitaciones() { return !!(equipo.datos && equipo.datos.invitaciones.length); }
+  function avisoEquipo() {
+    if (!hayInvitaciones()) return "";
+    var i = equipo.datos.invitaciones[0];
+    return '<div class="banner equipo-aviso"><span><b>' + esc(i.jefe) + "</b> te invitó a su equipo de públicas.</span>" +
+      '<button type="button" data-action="equipo-ver">Ver</button></div>';
+  }
+  function cardEquipo() {
+    if (!EN_SITIO || !cuenta) return "";
+    var d = equipo.datos, h = '<section class="card" id="card-equipo"><h2>Equipo de públicas</h2>';
+    if (!d) return h + '<p class="hint">Cargando…</p></section>';
+    d.invitaciones.forEach(function (i) {
+      h += '<div class="equipo-inv"><p><b>' + esc(i.jefe) + "</b> te invitó a su equipo. Si aceptás, va a ver tus <b>entradas vendidas, montos vendidos y frees</b> de Mi Rendimiento. No ve tu comisión ni tus cobros.</p>" +
+        '<div class="row"><button class="btn sm" type="button" data-action="equipo-aceptar" data-id="' + esc(i.id) + '">Aceptar</button>' +
+        '<button class="btn ghost sm" type="button" data-action="equipo-rechazar" data-id="' + esc(i.id) + '">Rechazar</button></div></div>';
+    });
+    if (d.miEquipo) {
+      h += '<p>Sos parte del equipo de <b>' + esc(d.miEquipo.jefe) + "</b>: ve tus entradas vendidas, montos y frees (no tu comisión ni tus cobros).</p>" +
+        '<button type="button" class="link-btn peligro-txt" data-action="equipo-salir" data-id="' + esc(d.miEquipo.id) + '">Salir del equipo</button>';
+    }
+    h += '<h3 class="equipo-sub">¿Sos jefe de públicas?</h3>' +
+      '<p class="hint">Invitá a tus RRPPs con el mail de su cuenta. Cuando acepten, en <b>Estadísticas → Equipo</b> vas a ver los números de todo tu equipo.</p>' +
+      '<div class="link-row"><input id="equipo-mail" class="input" type="email" inputmode="email" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="mail del RRPP" aria-label="Mail del RRPP">' +
+      '<button class="btn sm" type="button" data-action="equipo-invitar">Invitar</button></div><div class="err" id="equipo-err"></div>';
+    if (d.miembros.length) {
+      h += '<div class="equipo-lista">' + d.miembros.map(function (m) {
+        var activo = m.estado === "activo";
+        return '<div class="equipo-m"><div class="equipo-nom"><b>' + esc(m.nombre || m.email) + "</b><span>" + esc(m.email) + "</span></div>" +
+          '<span class="equipo-estado' + (activo ? " activo" : "") + '">' + (activo ? "En el equipo" : "Pendiente") + "</span>" +
+          '<button type="button" class="link-btn peligro-txt" data-action="equipo-quitar" data-id="' + esc(m.id) + '" data-nombre="' + esc(m.nombre || m.email) + '">' + (activo ? "Quitar" : "Cancelar") + "</button></div>";
+      }).join("") + "</div>";
+    }
+    return h + "</section>";
+  }
+  function accionEquipo(ruta, cuerpo, ok) {
+    api(ruta, { method: "POST", body: cuerpo }).then(function (j) {
+      equipo.datos = j; equipoStats.t = 0; render();
+      if (ok) toast(ok);
+    }, function (e) {
+      var err = document.getElementById("equipo-err");
+      var msg = ERRORES_EQUIPO[e && e.error] || "No se pudo. Revisá tu conexión y probá de nuevo.";
+      if (err) err.textContent = msg; else toast(msg);
+    });
+  }
+  // Estadísticas: a jefe chooses between the team's numbers and their own
+  function vistaEstadisticas() {
+    if (!esJefe()) return viewRendimiento();
+    var m = ui.statsModo;
+    return '<div class="chips modo-stats" role="group" aria-label="Ver estadísticas de">' +
+      '<button type="button" class="chip" data-action="stats-modo" data-modo="equipo" aria-pressed="' + (m === "equipo") + '">Equipo</button>' +
+      '<button type="button" class="chip" data-action="stats-modo" data-modo="mia" aria-pressed="' + (m !== "equipo") + '">Mía</button></div>' +
+      (m === "equipo" ? viewEquipo() : viewRendimiento());
+  }
+  function cargarEquipoStats(clave) {
+    if (equipoStats.estado === "cargando" && equipoStats.clave === clave) return;
+    if (equipoStats.clave === clave && equipoStats.datos && Date.now() - equipoStats.t < 60000) return;
+    var f = ui.filtroRend;
+    equipoStats.clave = clave; equipoStats.estado = "cargando";
+    api("/api/equipo/estadisticas?desde=" + encodeURIComponent(f.desde) + "&hasta=" + encodeURIComponent(f.hasta)).then(function (j) {
+      if (equipoStats.clave !== clave) return;
+      equipoStats.datos = j; equipoStats.t = Date.now(); equipoStats.estado = "";
+      if (ui.view === "rendimiento") renderSinTocarPanel();
+    }, function () {
+      if (equipoStats.clave !== clave) return;
+      equipoStats.estado = "error";
+      if (ui.view === "rendimiento") renderSinTocarPanel();
+    });
+  }
+  function viewEquipo() {
+    var h = '<div class="section-h"><h2>Tu equipo</h2>' + botonFiltro("rend") + "</div>";
+    h += ui.panelRend ? panelFiltro("rend") : resumenFiltro("rend");
+    var clave = ui.filtroRend.desde + "|" + ui.filtroRend.hasta;
+    cargarEquipoStats(clave);
+    var s = equipoStats.clave === clave ? equipoStats.datos : null;
+    if (!s) return h + '<div class="empty">' + (equipoStats.estado === "error" ? "No pude traer los números de tu equipo. Revisá tu conexión." : "Cargando los números de tu equipo…") + "</div>";
+    if (!s.miembros.length) {
+      return h + '<div class="empty"><strong>Todavía no hay RRPPs en tu equipo</strong>Cuando acepten tu invitación vas a ver acá sus números.' +
+        ' <button type="button" class="link-btn" data-action="equipo-ver">Invitar RRPPs</button></div>';
+    }
+    var t = s.totales;
+    h += '<div class="tiles">' +
+      tile(intf.format(t.rrpps), t.rrpps === 1 ? "RRPP en el equipo" : "RRPPs en el equipo") +
+      tile(intf.format(t.eventos), "Eventos Trabajados") +
+      tile(intf.format(t.entradas), "Entradas Vendidas") +
+      tile(money.format(t.facturado), "Monto Vendido") +
+      tile(intf.format(Math.round(t.entradas / t.rrpps)), "Entradas por RRPP (Promedio)") +
+      tile(money.format(t.entradas ? t.facturado / t.entradas : 0), "Precio Promedio por Entrada") +
+      (t.frees ? tile(intf.format(t.frees), "Frees Escaneados") : "") + "</div>";
+    var key = ui.rankBy;
+    var orden = s.miembros.slice().sort(function (a, b) { return (b[key] || 0) - (a[key] || 0); });
+    var max = Math.max.apply(null, orden.map(function (m) { return m[key] || 0; }).concat([1]));
+    h += '<div class="section-h"><h2>Ranking de RRPPs</h2><div class="chips" role="group" aria-label="Ordenar ranking">' +
+      '<button type="button" class="chip" data-rank="entradas" aria-pressed="' + (key === "entradas") + '">Entradas</button>' +
+      '<button type="button" class="chip" data-rank="facturado" aria-pressed="' + (key === "facturado") + '">Vendido</button></div></div>';
+    h += '<div class="rank">' + orden.map(function (m, i) {
+      var v = m[key] || 0;
+      return '<div class="rank-row"><span class="pos num">' + (i + 1) + '</span><span class="name">' + esc(m.nombre) +
+        " <small>" + m.eventos + (m.eventos === 1 ? " evento" : " eventos") + "</small></span>" +
+        '<span class="val num">' + (key === "entradas" ? intf.format(v) : money.format(v)) + "</span>" +
+        '<span class="bar"><i style="width:' + Math.max(2, v / max * 100).toFixed(1) + '%"></i></span></div>';
+    }).join("") + "</div>";
+    h += '<div class="section-h"><h2>Detalle por RRPP</h2></div>';
+    h += '<div class="equipo-detalles">' + orden.map(function (m) {
+      return '<details class="card equipo-det"><summary><b>' + esc(m.nombre) + "</b><span>" + intf.format(m.entradas) + " entradas · " + money.format(m.facturado) + "</span></summary>" +
+        '<div class="equipo-mini"><span>Eventos <b>' + m.eventos + "</b></span><span>Entradas <b>" + intf.format(m.entradas) + "</b></span>" +
+        "<span>Vendido <b>" + money.format(m.facturado) + "</b></span>" + (m.frees ? "<span>Frees <b>" + intf.format(m.frees) + "</b></span>" : "") +
+        "<span>Por evento <b>" + intf.format(m.eventos ? Math.round(m.entradas / m.eventos) : 0) + "</b></span></div>" +
+        (m.detalle.length
+          ? '<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Evento</th><th>Entradas</th><th>Vendido</th></tr></thead><tbody>' +
+            m.detalle.map(function (ev) {
+              return "<tr><td>" + esc(fechaCorta(ev.fecha)) + "</td><td>" + esc(ev.nombre) + '</td><td class="num">' + intf.format(ev.entradas) + '</td><td class="num">' + money.format(ev.facturado) + "</td></tr>";
+            }).join("") + "</tbody></table></div>"
+          : '<p class="hint">Sin eventos en este período.</p>') +
+        "</details>";
+    }).join("") + "</div>";
+    return h;
+  }
+
   // ---------- Admin (only the owner's account): who uses the app ----------
   var admin = { estado: "", datos: null, q: "" };
   function abrirAdmin() {
@@ -1006,7 +1167,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 
   function viewAjustes() {
     var h = (cuenta && cuenta.admin ? '<section class="card admin-acceso-card"><h2>Admin</h2><p>Mirá quiénes usan la app: cuentas, cómo entran, cuándo se sumaron y cuánto la usan.</p>' +
-      '<button class="btn" type="button" data-action="admin-abrir">Ver usuarios</button></section>' : "") + cuentaCard(true) + '<section class="card" id="card-comision"><h2>Tu comisión</h2>' +
+      '<button class="btn" type="button" data-action="admin-abrir">Ver usuarios</button></section>' : "") + cuentaCard(true) + cardEquipo() + '<section class="card" id="card-comision"><h2>Tu comisión</h2>' +
       "<p>Porcentaje que cobrás sobre el monto facturado de cada evento.</p>" +
       '<form id="pct-form" class="row" novalidate>' +
       '<div class="pct-wrap"><input id="pct-input" class="input" type="text" inputmode="decimal" aria-label="Porcentaje de comisión" value="' +
@@ -1364,6 +1525,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       }
       render();
       if (EN_SITIO) traerRend().then(traerTraspaso);
+      if (EN_SITIO) cargarEquipo();
     }, function () { /* offline: keep the local copy */ });
   }
 
@@ -2628,6 +2790,24 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     else if (a === "link-compartir") compartirLink();
     else if (a === "link-copiar") copiarTexto(linkPublico());
     else if (a === "salir") salir();
+    else if (a === "stats-modo") { ui.statsModo = t.getAttribute("data-modo"); render(); }
+    else if (a === "equipo-ver") {
+      ui.view = "ajustes"; render();
+      var ce = document.getElementById("card-equipo"); if (ce) ce.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+    else if (a === "equipo-invitar") {
+      var im = document.getElementById("equipo-mail"), mail = im ? im.value.trim().toLowerCase() : "";
+      if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/.test(mail)) { document.getElementById("equipo-err").textContent = ERRORES_EQUIPO.email; return; }
+      accionEquipo("/api/equipo/invitar", { email: mail }, "Invitación enviada a " + mail);
+    }
+    else if (a === "equipo-aceptar") accionEquipo("/api/equipo/responder", { id: t.getAttribute("data-id"), aceptar: true }, "¡Listo! Ya sos parte del equipo");
+    else if (a === "equipo-rechazar") accionEquipo("/api/equipo/responder", { id: t.getAttribute("data-id"), aceptar: false }, "Invitación rechazada");
+    else if (a === "equipo-quitar") {
+      if (window.confirm("¿Quitar a " + t.getAttribute("data-nombre") + " de tu equipo?")) accionEquipo("/api/equipo/quitar", { id: t.getAttribute("data-id") }, "Listo");
+    }
+    else if (a === "equipo-salir") {
+      if (window.confirm("¿Salir del equipo? Tu jefe deja de ver tus números.")) accionEquipo("/api/equipo/quitar", { id: t.getAttribute("data-id") }, "Saliste del equipo");
+    }
     else if (a === "admin-abrir" || a === "admin-recargar") abrirAdmin();
     else if (a === "admin-volver") { ui.view = "ajustes"; render(); document.getElementById("scroller").scrollTop = 0; }
     else if (a === "cuenta-borrar") { ui.borrarCuenta = true; render(); var bc = document.querySelector(".acciones-cuenta .sheet-confirm"); if (bc) bc.scrollIntoView({ block: "nearest", behavior: "smooth" }); }

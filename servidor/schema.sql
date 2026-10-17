@@ -62,3 +62,16 @@ CREATE TABLE IF NOT EXISTS rendimiento (
 
 -- v4: secciones del tutorial que la cuenta ya vio (JSON), para mostrarlo una sola vez en cualquier dispositivo
 ALTER TABLE users ADD COLUMN tutorial TEXT;
+
+-- v6 (rama dashboard-jefes): equipos de públicas. El jefe invita por mail; el RRPP acepta (estado activo) o rechaza (se borra).
+CREATE TABLE IF NOT EXISTS equipo (
+  id TEXT PRIMARY KEY,           -- id de la invitación
+  jefe TEXT NOT NULL,            -- sub del jefe de públicas
+  email TEXT NOT NULL,           -- mail invitado
+  miembro TEXT,                  -- sub del RRPP cuando acepta
+  estado TEXT NOT NULL,          -- pendiente | activo
+  creado TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS equipo_jefe_email ON equipo (jefe, email);
+CREATE INDEX IF NOT EXISTS equipo_email ON equipo (email);
+CREATE INDEX IF NOT EXISTS equipo_miembro ON equipo (miembro);

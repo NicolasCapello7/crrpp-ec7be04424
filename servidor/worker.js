@@ -123,6 +123,56 @@ async function usarCodigo(env, email, tipo, codigo) {
   try { return f.datos ? JSON.parse(f.datos) : {}; } catch (e) { return {}; }
 }
 // Mails go out through Resend (key saved as the RESEND_API_KEY secret)
+// ---------- teams: a "jefe de públicas" invites RRPPs; once they accept, the jefe sees their sales ----------
+// The jefe sees each member's events, tickets sold, amount sold and frees from Mi Rendimiento — never their
+// commission or what they collected. A RRPP belongs to one team at a time and can leave whenever they want.
+async function equipoDe(env, u) {
+  const [miembros, mio, invitaciones] = await Promise.all([
+    env.DB.prepare("SELECT e.id, e.email, e.estado, e.creado, x.nombre FROM equipo e LEFT JOIN users x ON x.email = e.email WHERE e.jefe = ? ORDER BY e.estado, e.creado").bind(u.sub).all(),
+    env.DB.prepare("SELECT e.id, j.nombre, j.email FROM equipo e JOIN users j ON j.sub = e.jefe WHERE e.miembro = ? AND e.estado = 'activo'").bind(u.sub).first(),
+    env.DB.prepare("SELECT e.id, j.nombre, j.email FROM equipo e JOIN users j ON j.sub = e.jefe WHERE e.email = ? AND e.estado = 'pendiente' ORDER BY e.creado").bind(u.email).all()
+  ]);
+  return {
+    miembros: miembros.results.map(m => ({ id: m.id, email: m.email, nombre: m.nombre || "", estado: m.estado })),
+    miEquipo: mio ? { id: mio.id, jefe: mio.nombre || mio.email } : null,
+    invitaciones: invitaciones.results.map(i => ({ id: i.id, jefe: i.nombre || i.email }))
+  };
+}
+function enRangoFecha(f, desde, hasta) { return (!desde || (f || "") >= desde) && (!hasta || (f || "") <= hasta); }
+// Team numbers for a date range: totals plus each RRPP with their events in that range
+async function estadisticasEquipo(env, jefe, desde, hasta) {
+  const { results } = await env.DB.prepare(
+    "SELECT e.id, u.nombre, u.email, r.data FROM equipo e JOIN users u ON u.sub = e.miembro LEFT JOIN rendimiento r ON r.sub = e.miembro " +
+    "WHERE e.jefe = ? AND e.estado = 'activo'").bind(jefe).all();
+  const miembros = results.map(f => {
+    let d = {};
+    try { d = JSON.parse(f.data || "{}") || {}; } catch (e) { d = {}; }
+    const evs = (Array.isArray(d.eventos) ? d.eventos : []).filter(ev => ev && enRangoFecha(ev.fecha, desde, hasta))
+      .map(ev => ({ nombre: String(ev.nombre || ""), fecha: ev.fecha || "", entradas: Number(ev.entradas) || 0, facturado: Number(ev.facturado) || 0, frees: Number(ev.frees) || 0 }))
+      .sort((a, b) => b.fecha.localeCompare(a.fecha));
+    const suma = k => evs.reduce((s, ev) => s + ev[k], 0);
+    return { id: f.id, nombre: f.nombre || f.email, eventos: evs.length, entradas: suma("entradas"), facturado: suma("facturado"), frees: suma("frees"), detalle: evs.slice(0, 200) };
+  });
+  const total = k => miembros.reduce((s, m) => s + m[k], 0);
+  return { miembros, totales: { rrpps: miembros.length, eventos: total("eventos"), entradas: total("entradas"), facturado: total("facturado"), frees: total("frees") } };
+}
+async function mandarInvitacion(env, para, jefe) {
+  if (!env.RESEND_API_KEY) return;
+  const sitio = env.SITIO || "https://bpmtickets.com.ar";
+  const html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#17141d">' +
+    '<p style="font-size:20px;font-weight:700;margin:0 0 16px">BPM <span style="color:#00b84f">TICKETS</span></p>' +
+    '<p style="font-size:15px;line-height:1.5;margin:0 0 16px"><b>' + esc(jefe) + "</b> te invitó a su equipo de públicas en BPM Tickets.</p>" +
+    '<p style="font-size:15px;line-height:1.5;margin:0 0 20px">Entrá con este mail y aceptá la invitación desde <b>Ajustes</b>. Si aceptás, va a ver tus entradas vendidas y montos de Mi Rendimiento (no tu comisión ni tus cobros).</p>' +
+    '<p style="margin:0 0 16px"><a href="' + sitio + '" style="background:#00b84f;color:#04210f;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px;display:inline-block">Abrir BPM Tickets</a></p>' +
+    '<p style="font-size:13px;color:#696374;margin:0">Si no conocés a quien te invitó, ignorá este mail.</p></div>';
+  await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + env.RESEND_API_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: env.MAIL_DESDE || "BPM Tickets <no-responder@bpmtickets.com.ar>", to: [para], subject: jefe + " te invitó a su equipo en BPM Tickets", html,
+      text: jefe + " te invitó a su equipo de públicas en BPM Tickets. Entrá a " + sitio + " con este mail y aceptá la invitación desde Ajustes." })
+  });
+}
+
 async function mandarCodigo(env, email, tipo, codigo) {
   if (!env.RESEND_API_KEY) throw { code: "mail-config" };
   const motivo = tipo === "registro" ? "Para terminar de crear tu cuenta, ingresá este código en la app:" : "Para elegir una contraseña nueva, ingresá este código en la app:";
@@ -1047,6 +1097,46 @@ export default {
         const u = await usuarioDe(req, env);
         if (!u) return json(env, { ok: false, error: "sesion" }, 401);
 
+        // ----- teams -----
+        if (ruta === "/api/equipo" && req.method === "GET") return json(env, Object.assign({ ok: true }, await equipoDe(env, u)));
+        if (ruta === "/api/equipo/invitar" && req.method === "POST") {
+          const email = emailLimpio((await req.json().catch(() => ({}))).email);
+          if (!email) return json(env, { ok: false, error: "email" }, 400);
+          if (email === String(u.email).toLowerCase()) return json(env, { ok: false, error: "vos" }, 400);
+          const ya = await env.DB.prepare("SELECT estado FROM equipo WHERE jefe = ? AND email = ?").bind(u.sub, email).first();
+          if (ya) return json(env, { ok: false, error: ya.estado === "activo" ? "ya-miembro" : "ya-invitado" }, 409);
+          const cant = await env.DB.prepare("SELECT COUNT(*) AS n FROM equipo WHERE jefe = ?").bind(u.sub).first();
+          if (cant.n >= 100) return json(env, { ok: false, error: "lleno" }, 400);
+          if (await sumarLimite(env, "invitar:" + u.sub, 24 * HORA_MS) > 40) return json(env, { ok: false, error: "limite" }, 429);
+          await env.DB.prepare("INSERT INTO equipo (id, jefe, email, miembro, estado, creado) VALUES (?, ?, ?, NULL, 'pendiente', ?)")
+            .bind(tokenNuevo().slice(0, 20), u.sub, email, new Date().toISOString()).run();
+          ctx.waitUntil(mandarInvitacion(env, email, u.nombre || u.email).catch(() => {}));
+          return json(env, Object.assign({ ok: true }, await equipoDe(env, u)));
+        }
+        if (ruta === "/api/equipo/responder" && req.method === "POST") {
+          const cuerpo = await req.json().catch(() => ({}));
+          const inv = await env.DB.prepare("SELECT id, jefe FROM equipo WHERE id = ? AND email = ? AND estado = 'pendiente'").bind(String(cuerpo.id || ""), u.email).first();
+          if (!inv) return json(env, { ok: false, error: "invitacion" }, 404);
+          if (!cuerpo.aceptar) {
+            await env.DB.prepare("DELETE FROM equipo WHERE id = ?").bind(inv.id).run();
+          } else {
+            if (inv.jefe === u.sub) return json(env, { ok: false, error: "vos" }, 400);
+            const otro = await env.DB.prepare("SELECT id FROM equipo WHERE miembro = ? AND estado = 'activo'").bind(u.sub).first();
+            if (otro) return json(env, { ok: false, error: "ya-en-equipo" }, 409);
+            await env.DB.prepare("UPDATE equipo SET miembro = ?, estado = 'activo' WHERE id = ?").bind(u.sub, inv.id).run();
+          }
+          return json(env, Object.assign({ ok: true }, await equipoDe(env, u)));
+        }
+        if (ruta === "/api/equipo/quitar" && req.method === "POST") {
+          // the jefe removes a member (or cancels an invitation); a member leaves their team
+          const id = String((await req.json().catch(() => ({}))).id || "");
+          await env.DB.prepare("DELETE FROM equipo WHERE id = ? AND (jefe = ? OR (miembro = ? AND estado = 'activo'))").bind(id, u.sub, u.sub).run();
+          return json(env, Object.assign({ ok: true }, await equipoDe(env, u)));
+        }
+        if (ruta === "/api/equipo/estadisticas" && req.method === "GET") {
+          const f = s => (/^\d{4}-\d{2}-\d{2}$/.test(s || "") ? s : "");
+          return json(env, Object.assign({ ok: true }, await estadisticasEquipo(env, u.sub, f(url.searchParams.get("desde")), f(url.searchParams.get("hasta")))));
+        }
         if (ruta === "/api/admin/usuarios" && req.method === "GET") {
           if (!esAdmin(env, u.email)) return json(env, { ok: false, error: "admin" }, 403);
           return json(env, Object.assign({ ok: true }, await listaAdmin(env)));
@@ -1120,6 +1210,7 @@ export default {
             env.DB.prepare("DELETE FROM eventos WHERE sub = ?").bind(u.sub),
             env.DB.prepare("DELETE FROM rendimiento WHERE sub = ?").bind(u.sub),
             env.DB.prepare("DELETE FROM traspasos WHERE sub = ?").bind(u.sub),
+            env.DB.prepare("DELETE FROM equipo WHERE jefe = ? OR miembro = ? OR email = ?").bind(u.sub, u.sub, u.email),
             env.DB.prepare("DELETE FROM codigos WHERE email = ?").bind(u.email),
             env.DB.prepare("DELETE FROM sessions WHERE sub = ?").bind(u.sub),
             env.DB.prepare("DELETE FROM users WHERE sub = ?").bind(u.sub)
