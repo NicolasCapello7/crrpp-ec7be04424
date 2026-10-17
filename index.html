@@ -457,7 +457,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var storageOk = true;
-  var VERSION = 58; // bumped with sw.js on every change so phones pick it up
+  var VERSION = 59; // bumped with sw.js on every change so phones pick it up
   var VERSION_APP = "1.0.0"; // the one shown in Ajustes
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, buscarEv: "", filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
@@ -1340,6 +1340,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     return api("/api/yo").then(function (j) {
       if (cuenta !== yo) return; // signed out (or into another account) while this was loading
       Object.assign(cuenta, j.usuario);
+      subirTutorial();
       if (!cuenta.sincronizado) {
         var porId = {};
         j.eventos.forEach(function (c) { porId[c.id] = true; });
@@ -1951,8 +1952,23 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // ---------- tutorial: popups that explain each section the first time it opens (again from "?") ----------
   var TUTO_KEY = "comisiones-rrpp-tutorial";
   var tuto = { pasos: null, i: 0, vista: null };
-  function tutoVistos() { try { return JSON.parse(localStorage.getItem(TUTO_KEY) || "{}") || {}; } catch (e) { return {}; } }
-  function tutoMarcar(v) { var t = tutoVistos(); t[v] = true; try { localStorage.setItem(TUTO_KEY, JSON.stringify(t)); } catch (e) { /* ignore */ } }
+  // Seen sections live on this device and in the account, so the tutorial shows once per person, whatever device or
+  // browser they open later (and even if the phone clears the site's data)
+  function tutoLocal() { try { return JSON.parse(localStorage.getItem(TUTO_KEY) || "{}") || {}; } catch (e) { return {}; } }
+  function tutoVistos() { return Object.assign({}, tutoLocal(), (cuenta && cuenta.tutorial) || {}); }
+  function tutoMarcar(v) {
+    var t = tutoVistos(); t[v] = true;
+    try { localStorage.setItem(TUTO_KEY, JSON.stringify(t)); } catch (e) { /* ignore */ }
+    subirTutorial();
+  }
+  // Sends to the account what this device saw and the account doesn't know yet
+  function subirTutorial() {
+    if (!EN_SITIO || !cuenta) return;
+    var t = tutoVistos(), enCuenta = cuenta.tutorial || {};
+    if (!Object.keys(t).some(function (k) { return !enCuenta[k]; })) return;
+    cuenta.tutorial = t; guardarCuenta();
+    api("/api/tutorial", { method: "PUT", body: { vistas: t } }).then(function (j) { if (cuenta) { cuenta.tutorial = j.tutorial; guardarCuenta(); } }, function () {});
+  }
   // Steps of each section: sel = what gets lit (steps whose element isn't on screen are skipped); no sel = centered
   function pasosTutorial(v) {
     if (v === "cartelera") return [
@@ -1992,7 +2008,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   }
   // Opens on its own the first time a section is shown
   function revisarTutorial() {
-    if (ui.view === "admin" || tutoVistos()[ui.view]) return;
+    // with an account, wait until it says which sections were already seen (another device may have shown them)
+    if (ui.view === "admin" || (EN_SITIO && cuenta && !cuenta.tutorial) || tutoVistos()[ui.view]) return;
     clearTimeout(revisarTutorial.t);
     var v = ui.view;
     revisarTutorial.t = setTimeout(function () { if (ui.view === v && !tutoVistos()[v]) abrirTutorial(v); }, 600);

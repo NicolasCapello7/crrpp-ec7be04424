@@ -467,7 +467,7 @@ async function verificarGoogle(credencial, clientId) {
 async function usuarioDe(req, env) {
   const m = (req.headers.get("Authorization") || "").match(/^Bearer ([a-f0-9]{64})$/);
   if (!m) return null;
-  return env.DB.prepare("SELECT u.sub, u.email, u.nombre, u.slug, u.instagram, u.whatsapp FROM sessions s JOIN users u ON u.sub = s.sub WHERE s.token_hash = ? AND s.expira > ?")
+  return env.DB.prepare("SELECT u.sub, u.email, u.nombre, u.slug, u.instagram, u.whatsapp, u.tutorial FROM sessions s JOIN users u ON u.sub = s.sub WHERE s.token_hash = ? AND s.expira > ?")
     .bind(await sha256(m[1]), Date.now()).first();
 }
 // "juan-perez" -> …/eventos/juan-perez; a repeated name is stored as "juan-perez--3f9a" -> …/eventos/juan-perez?id=3f9a
@@ -476,7 +476,16 @@ function linkDe(env, slug) {
   const i = slug.indexOf("--");
   return (env.SITIO || "https://bpmtickets.com.ar") + "/eventos/" + (i > 0 ? slug.slice(0, i) + "?id=" + slug.slice(i + 2) : slug);
 }
-function usuarioPublico(u, env) { return { email: u.email, nombre: u.nombre || "", slug: u.slug || "", link: linkDe(env, u.slug), instagram: u.instagram || "", whatsapp: u.whatsapp || "", admin: esAdmin(env, u.email) }; }
+function usuarioPublico(u, env) { return { email: u.email, nombre: u.nombre || "", slug: u.slug || "", link: linkDe(env, u.slug), instagram: u.instagram || "", whatsapp: u.whatsapp || "", admin: esAdmin(env, u.email), tutorial: tutorialDe(u.tutorial) }; }
+// Sections whose tutorial this account already saw (kept in the account so it shows once, on any device)
+const VISTAS_TUTORIAL = ["cartelera", "fechas", "rendimiento", "ajustes"];
+function tutorialDe(texto) {
+  let t = {};
+  try { t = JSON.parse(texto || "{}") || {}; } catch (e) { /* ignore */ }
+  const limpio = {};
+  VISTAS_TUTORIAL.forEach(v => { if (t[v]) limpio[v] = true; });
+  return limpio;
+}
 // The owner's accounts (ADMIN_EMAILS) can see the list of RRPPs using the app
 function esAdmin(env, email) {
   return !!email && String(env.ADMIN_EMAILS || "").toLowerCase().split(",").map(s => s.trim()).filter(Boolean).includes(String(email).toLowerCase());
@@ -516,7 +525,7 @@ async function listaAdmin(env) {
 async function abrirSesion(env, sub, sugerido) {
   const token = tokenNuevo();
   await env.DB.prepare("INSERT INTO sessions (token_hash, sub, expira) VALUES (?, ?, ?)").bind(await sha256(token), sub, Date.now() + SESION_MS).run();
-  const u = await env.DB.prepare("SELECT sub, email, nombre, slug, instagram, whatsapp FROM users WHERE sub = ?").bind(sub).first();
+  const u = await env.DB.prepare("SELECT sub, email, nombre, slug, instagram, whatsapp, tutorial FROM users WHERE sub = ?").bind(sub).first();
   return json(env, { ok: true, token, usuario: usuarioPublico(u, env), sugerido: slugDe(u.nombre || sugerido || u.email.split("@")[0]) });
 }
 // Old sessions, codes and counters are cleared now and then
@@ -1041,6 +1050,12 @@ export default {
         if (ruta === "/api/admin/usuarios" && req.method === "GET") {
           if (!esAdmin(env, u.email)) return json(env, { ok: false, error: "admin" }, 403);
           return json(env, Object.assign({ ok: true }, await listaAdmin(env)));
+        }
+        if (ruta === "/api/tutorial" && req.method === "PUT") {
+          const cuerpo = await req.json().catch(() => ({}));
+          const vistas = Object.assign(tutorialDe(u.tutorial), tutorialDe(JSON.stringify(cuerpo.vistas || {})));
+          await env.DB.prepare("UPDATE users SET tutorial = ? WHERE sub = ?").bind(JSON.stringify(vistas), u.sub).run();
+          return json(env, { ok: true, tutorial: vistas });
         }
         if (ruta === "/api/yo" && req.method === "GET") {
           return json(env, { ok: true, usuario: usuarioPublico(u, env), eventos: await leerLista(env, u.sub) });

@@ -59,3 +59,6 @@ CREATE TABLE IF NOT EXISTS rendimiento (
   version INTEGER NOT NULL DEFAULT 0,
   actualizado TEXT NOT NULL
 );
+
+-- v4: secciones del tutorial que la cuenta ya vio (JSON), para mostrarlo una sola vez en cualquier dispositivo
+ALTER TABLE users ADD COLUMN tutorial TEXT;
