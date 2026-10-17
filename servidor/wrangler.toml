@@ -31,3 +31,33 @@ database_id = "bd8b8a8f-24e3-4fab-a28a-cc3215800072"
 
 [triggers]
 crons = ["0 7 * * *"] # every day at 04:00 Argentina
+
+# ---------- STAGING: staging.bpmtickets.com.ar, to try changes before they reach the real app ----------
+# Own Worker, own empty database and the app files from this folder (not GitHub Pages); no daily copy.
+# Deploy with: bash deploy-staging.sh
+[env.staging]
+name = "eventos-staging"
+workers_dev = false
+routes = [
+  { pattern = "staging.bpmtickets.com.ar", custom_domain = true }
+]
+
+[env.staging.vars]
+STAGING = "1"
+SITIO = "https://staging.bpmtickets.com.ar"
+APP_ORIGIN = "https://staging.bpmtickets.com.ar"
+ORIGENES = "https://staging.bpmtickets.com.ar"
+MAIL_DESDE = "BPM Tickets (pruebas) <no-responder@bpmtickets.com.ar>"
+GOOGLE_CLIENT_ID = "174152864828-tbk0qlbnm28kak0lvbum8mvi296n2mtj.apps.googleusercontent.com"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "rrpp-db-staging"
+database_id = "42c7f997-ed0c-4d57-bcfb-367d97798122"
+
+[env.staging.assets]
+directory = "./.staging-app"
+binding = "ASSETS"
+
+[env.staging.triggers]
+crons = []

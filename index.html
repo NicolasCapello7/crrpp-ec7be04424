@@ -341,6 +341,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .actions .btn:first-child { flex: 1; }
 
+/* Test copy (staging.bpmtickets.com.ar): always visible label */
+.staging-marca { position: fixed; top: calc(4px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 40; pointer-events: none;
+  background: var(--warn); color: #1a1200; font-size: 10px; font-weight: 800; letter-spacing: .12em; padding: 2px 10px; border-radius: 999px; }
 /* Sign in / sign up */
 .auth { gap: 14px; }
 .auth h2 { font-size: 22px; }
@@ -428,7 +431,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var data = { pct: null, eventos: [], productoras: [], cartelera: [], ultimaCopia: null };
   // Event reader for Bombo, Venti, Planout and Passline (server /lector)
   // The app lives at bpmtickets.com.ar (same server as the API); the old GitHub Pages copy only helps carry data over
-  var SITIO = "https://bpmtickets.com.ar";
+  // staging.bpmtickets.com.ar is the test copy (own server and data); everything else talks to bpmtickets.com.ar
+  var SITIO = /^(staging\.)?bpmtickets\.com\.ar$/.test(location.hostname) ? location.origin : "https://bpmtickets.com.ar";
+  var STAGING = location.hostname === "staging.bpmtickets.com.ar";
   var EN_SITIO = location.origin === SITIO;
   var API_URL = EN_SITIO ? "" : SITIO;
   var LECTOR_URL = API_URL + "/lector";
@@ -1091,7 +1096,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     return SITIO + "/eventos/" + (i > 0 ? slug.slice(0, i) + "?id=" + slug.slice(i + 2) : slug);
   }
   function linkPublico() { return cuenta && cuenta.slug ? (cuenta.link || linkDeSlug(cuenta.slug)) : ""; }
-  function textoLinkPrevio(nombre) { return "bpmtickets.com.ar/eventos/" + (slugDe(nombre) || "tu-nombre"); }
+  function textoLinkPrevio(nombre) { return SITIO.replace("https://", "") + "/eventos/" + (slugDe(nombre) || "tu-nombre"); }
   function slugDe(t) {
     return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
       .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30).replace(/-+$/g, "");
@@ -2667,6 +2672,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   });
 
   // ---------- start ----------
+  if (STAGING) {
+    document.title = "PRUEBAS · " + document.title;
+    document.body.insertAdjacentHTML("beforeend", '<div class="staging-marca" aria-hidden="true">PRUEBAS</div>');
+  }
   leerCuenta();
   load();
   sumarProductorasFaltantes();

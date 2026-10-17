@@ -839,7 +839,9 @@ async function copiaDiaria(env) {
 }
 
 async function servirApp(env, ruta) {
-  const r = await fetch((env.APP_FUENTE || "https://nicolascapello7.github.io/crrpp-ec7be04424") + ruta, { cf: { cacheTtl: 30, cacheEverything: true } });
+  // staging carries its own copy of the app files; production reads them from GitHub Pages
+  const r = env.ASSETS ? await env.ASSETS.fetch(new Request(new URL(ruta, env.SITIO).toString()))
+    : await fetch((env.APP_FUENTE || "https://nicolascapello7.github.io/crrpp-ec7be04424") + ruta, { cf: { cacheTtl: 30, cacheEverything: true } });
   if (!r.ok) return pagina404();
   const sinCache = ruta === "/index.html" || ruta === "/sw.js" || ruta === "/manifest.webmanifest";
   return new Response(r.body, { headers: Object.assign({}, SEGURIDAD, {
@@ -1095,7 +1097,7 @@ export default {
         if (lista.some(c => c.link && (!c.actualizado || Date.now() - Date.parse(c.actualizado) > VIEJO_MS))) ctx.waitUntil(refrescar(env, u.sub));
         const nonce = tokenNuevo().slice(0, 24);
         return new Response(paginaHTML(lista, u, nonce), { headers: Object.assign({}, SEGURIDAD, {
-          "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store",
+          "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": env.STAGING ? "noindex, nofollow" : "all",
           "Content-Security-Policy": "default-src 'none'; img-src https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com https://static.get-in.com https://flashpass.s3.us-east-1.amazonaws.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'nonce-" + nonce + "' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         }) });
       }
