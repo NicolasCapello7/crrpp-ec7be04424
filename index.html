@@ -449,6 +449,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // staging.bpmtickets.com.ar is the test copy (own server and data); everything else talks to bpmtickets.com.ar
   var SITIO = /^(staging\.)?bpmtickets\.com\.ar$/.test(location.hostname) ? location.origin : "https://bpmtickets.com.ar";
   var STAGING = location.hostname === "staging.bpmtickets.com.ar";
+  // TEMPORARY: backup load/save is also shown on bpmtickets.com.ar while the owner needs it; set to false to hide it again
+  var COPIA_EN_SITIO = true;
   var EN_SITIO = location.origin === SITIO;
   var API_URL = EN_SITIO ? "" : SITIO;
   var LECTOR_URL = API_URL + "/lector";
@@ -457,7 +459,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var storageOk = true;
-  var VERSION = 60; // bumped with sw.js on every change so phones pick it up
+  var VERSION = 65; // bumped with sw.js on every change so phones pick it up
   var VERSION_APP = "1.0.0"; // the one shown in Ajustes
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, buscarEv: "", filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
@@ -1018,7 +1020,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     h += viewProductoras();
 
     // backups: in the old app, and on the test site (staging) to load data into a test account; hidden on bpmtickets.com.ar
-    if (!EN_SITIO || STAGING) h += viewCopia();
+    if (!EN_SITIO || STAGING || COPIA_EN_SITIO) h += viewCopia();
     h += viewInstalar() + accionesCuenta() + '<p class="version">V ' + VERSION_APP + "</p>";
     return h;
   }
