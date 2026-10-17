@@ -16,6 +16,8 @@ ORIGENES = "https://bpmtickets.com.ar,https://nicolascapello7.github.io"
 APP_FUENTE = "https://nicolascapello7.github.io/crrpp-ec7be04424"
 MAIL_DESDE = "BPM Tickets <no-responder@bpmtickets.com.ar>"
 GOOGLE_CLIENT_ID = "174152864828-tbk0qlbnm28kak0lvbum8mvi296n2mtj.apps.googleusercontent.com"
+# accounts that see the Admin section (list of users)
+ADMIN_EMAILS = "nicolascapelloubeda@gmail.com"
 # RESEND_API_KEY is a secret: set it in Cloudflare (Workers > eventos > Settings > Variables and Secrets)
 
 [[d1_databases]]
@@ -49,6 +51,8 @@ APP_ORIGIN = "https://staging.bpmtickets.com.ar"
 ORIGENES = "https://staging.bpmtickets.com.ar"
 MAIL_DESDE = "BPM Tickets (pruebas) <no-responder@bpmtickets.com.ar>"
 GOOGLE_CLIENT_ID = "174152864828-tbk0qlbnm28kak0lvbum8mvi296n2mtj.apps.googleusercontent.com"
+# accounts that see the Admin section (list of users)
+ADMIN_EMAILS = "nicolascapelloubeda@gmail.com"
 
 [[env.staging.d1_databases]]
 binding = "DB"

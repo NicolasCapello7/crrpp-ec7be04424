@@ -344,6 +344,21 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 /* Test copy (staging.bpmtickets.com.ar): always visible label */
 .staging-marca { position: fixed; top: calc(4px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 40; pointer-events: none;
   background: var(--warn); color: #1a1200; font-size: 10px; font-weight: 800; letter-spacing: .12em; padding: 2px 10px; border-radius: 999px; }
+/* Admin */
+.admin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: -6px; }
+.admin-top .link-btn { font-size: 15px; }
+.admin-lista { display: flex; flex-direction: column; gap: 12px; }
+.admin-u { gap: 10px; }
+.admin-u[hidden] { display: none; }
+.admin-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.admin-nombre { display: flex; flex-direction: column; min-width: 0; }
+.admin-nombre b { font-size: 16px; overflow-wrap: anywhere; }
+.admin-nombre span { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.admin-acceso { flex: 0 0 auto; font-size: 11px; font-weight: 700; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 3px 9px; white-space: nowrap; }
+.admin-datos { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); }
+.admin-datos b { color: var(--fg); font-weight: 600; }
+.admin-acceso-card { border-color: var(--accent); }
+.admin-acceso-card p { margin: 0; color: var(--muted); }
 /* Sign in / sign up */
 .auth { gap: 14px; }
 .auth h2 { font-size: 22px; }
@@ -442,7 +457,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var storageOk = true;
-  var VERSION = 57; // bumped with sw.js on every change so phones pick it up
+  var VERSION = 58; // bumped with sw.js on every change so phones pick it up
   var VERSION_APP = "1.0.0"; // the one shown in Ajustes
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, buscarEv: "", filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
@@ -652,8 +667,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     $fab.setAttribute("data-action", enCartel ? "cartel-nuevo" : "new");
     $fab.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>' +
       (enCartel ? "Agregar evento" : "Nuevo evento");
+    if (ui.view === "admin" && !(cuenta && cuenta.admin)) ui.view = "ajustes";
+    $fab.hidden = $fab.hidden || ui.view === "admin";
     document.querySelectorAll(".nav [data-view]").forEach(function (b) {
-      if (b.getAttribute("data-view") === ui.view) b.setAttribute("aria-current", "page");
+      if (b.getAttribute("data-view") === (ui.view === "admin" ? "ajustes" : ui.view)) b.setAttribute("aria-current", "page");
       else b.removeAttribute("aria-current");
     });
 
@@ -679,6 +696,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (ui.view === "fechas") html += viewFechas();
     else if (ui.view === "cartelera") html += viewCartelera();
     else if (ui.view === "rendimiento") html += viewRendimiento();
+    else if (ui.view === "admin") html += viewAdmin();
     else html += viewAjustes();
     return '<div class="stack">' + html + "</div>";
   }
@@ -930,8 +948,65 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     return '<div class="tile"><h3 class="k">' + k + '</h3><div class="v num">' + v + "</div></div>";
   }
 
+  // ---------- Admin (only the owner's account): who uses the app ----------
+  var admin = { estado: "", datos: null, q: "" };
+  function abrirAdmin() {
+    ui.view = "admin"; admin.estado = "cargando"; admin.q = "";
+    render(); document.getElementById("scroller").scrollTop = 0;
+    api("/api/admin/usuarios").then(function (j) { admin.datos = j; admin.estado = "ok"; if (ui.view === "admin") render(); },
+      function () { admin.estado = "error"; if (ui.view === "admin") render(); });
+  }
+  function fechaHora(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    return d.getDate() + " " + MESES[d.getMonth()] + " " + d.getFullYear() + " · " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+  function haceCuanto(iso) {
+    if (!iso) return "sin actividad";
+    var min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (min < 60) return min <= 1 ? "recién" : "hace " + min + " min";
+    var hs = Math.floor(min / 60);
+    if (hs < 24) return "hace " + hs + (hs === 1 ? " hora" : " horas");
+    var dias = Math.floor(hs / 24);
+    return "hace " + dias + (dias === 1 ? " día" : " días");
+  }
+  function viewAdmin() {
+    var h = '<div class="admin-top"><button type="button" class="link-btn" data-action="admin-volver">‹ Ajustes</button>' +
+      '<button type="button" class="link-btn" data-action="admin-recargar">Actualizar</button></div>' +
+      '<section class="card"><h2>Usuarios de BPM Tickets</h2><p class="hint">Solo vos ves esta sección.</p></section>';
+    if (admin.estado === "cargando" && !admin.datos) return h + '<div class="empty">Cargando usuarios…</div>';
+    if (admin.estado === "error" && !admin.datos) return h + '<div class="empty">No pude traer la lista. Revisá tu conexión y tocá Actualizar.</div>';
+    var d = admin.datos, t = d.totales;
+    h += '<div class="tiles">' + tile(t.usuarios, "Usuarios") + tile(t.nuevos, "Nuevos (7 días)") + tile(t.activos, "Activos (7 días)") + tile(t.proximos, "Eventos a la venta") + "</div>";
+    h += '<label class="buscar-ev admin-buscar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
+      '<input id="admin-q" type="search" placeholder="Buscar por nombre o mail" autocomplete="off" aria-label="Buscar usuario" value="' + esc(admin.q) + '"></label>';
+    h += '<div class="admin-lista">' + d.usuarios.map(function (u) {
+      var clave = esc((u.nombre + " " + u.email).toLowerCase());
+      return '<article class="card admin-u" data-q="' + clave + '">' +
+        '<div class="admin-cab"><div class="admin-nombre"><b>' + esc(u.nombre || "Sin nombre público") + "</b><span>" + esc(u.email) + "</span></div>" +
+        '<span class="admin-acceso">' + esc(u.acceso) + "</span></div>" +
+        '<div class="admin-datos"><span>Alta: <b>' + esc(fechaHora(u.creado)) + "</b></span>" +
+        "<span>Última actividad: <b>" + esc(haceCuanto(u.actividad)) + "</b></span>" +
+        "<span>Eventos: <b>" + u.eventos + "</b> (" + u.proximos + " a la venta)</span>" +
+        "<span>Mi Rendimiento: <b>" + u.ventas + "</b> eventos</span></div>" +
+        (u.link ? '<a class="link-publico" href="' + esc(u.link) + '" target="_blank" rel="noopener">' + esc(u.link.replace("https://", "")) + "</a>"
+          : '<span class="hint">Todavía no creó su link</span>') +
+        "</article>";
+    }).join("") + '</div><div class="empty" id="admin-vacio" hidden>Ningún usuario coincide con la búsqueda.</div>';
+    return h;
+  }
+  function filtrarAdmin() {
+    var q = admin.q.trim().toLowerCase(), n = 0;
+    document.querySelectorAll(".admin-u").forEach(function (el) {
+      var ok = !q || el.getAttribute("data-q").indexOf(q) >= 0;
+      el.hidden = !ok; if (ok) n++;
+    });
+    var v = document.getElementById("admin-vacio"); if (v) v.hidden = n > 0;
+  }
+
   function viewAjustes() {
-    var h = cuentaCard(true) + '<section class="card" id="card-comision"><h2>Tu comisión</h2>' +
+    var h = (cuenta && cuenta.admin ? '<section class="card admin-acceso-card"><h2>Admin</h2><p>Mirá quiénes usan la app: cuentas, cómo entran, cuándo se sumaron y cuánto la usan.</p>' +
+      '<button class="btn" type="button" data-action="admin-abrir">Ver usuarios</button></section>' : "") + cuentaCard(true) + '<section class="card" id="card-comision"><h2>Tu comisión</h2>' +
       "<p>Porcentaje que cobrás sobre el monto facturado de cada evento.</p>" +
       '<form id="pct-form" class="row" novalidate>' +
       '<div class="pct-wrap"><input id="pct-input" class="input" type="text" inputmode="decimal" aria-label="Porcentaje de comisión" value="' +
@@ -1917,7 +1992,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   }
   // Opens on its own the first time a section is shown
   function revisarTutorial() {
-    if (tutoVistos()[ui.view]) return;
+    if (ui.view === "admin" || tutoVistos()[ui.view]) return;
     clearTimeout(revisarTutorial.t);
     var v = ui.view;
     revisarTutorial.t = setTimeout(function () { if (ui.view === v && !tutoVistos()[v]) abrirTutorial(v); }, 600);
@@ -2531,6 +2606,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     else if (a === "link-compartir") compartirLink();
     else if (a === "link-copiar") copiarTexto(linkPublico());
     else if (a === "salir") salir();
+    else if (a === "admin-abrir" || a === "admin-recargar") abrirAdmin();
+    else if (a === "admin-volver") { ui.view = "ajustes"; render(); document.getElementById("scroller").scrollTop = 0; }
     else if (a === "cuenta-borrar") { ui.borrarCuenta = true; render(); var bc = document.querySelector(".acciones-cuenta .sheet-confirm"); if (bc) bc.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
     else if (a === "cuenta-borrar-no") { ui.borrarCuenta = false; render(); }
     else if (a === "cuenta-borrar-ok") eliminarCuenta();
@@ -2575,6 +2652,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (e.target.id === "f-facturado" || e.target.id === "f-pctev" || e.target.id === "f-frees" || e.target.id === "f-np-free") updatePreview();
     if (e.target.id === "pe-input") previewPct();
     if (e.target.id === "ev-buscar") { ui.buscarEv = e.target.value; renderSinTocarPanel(); }
+    if (e.target.id === "admin-q") { admin.q = e.target.value; filtrarAdmin(); }
     if (e.target.id === "perfil-nombre") {
       var pv = document.getElementById("perfil-preview");
       if (pv) pv.textContent = textoLinkPrevio(e.target.value);

@@ -476,7 +476,43 @@ function linkDe(env, slug) {
   const i = slug.indexOf("--");
   return (env.SITIO || "https://bpmtickets.com.ar") + "/eventos/" + (i > 0 ? slug.slice(0, i) + "?id=" + slug.slice(i + 2) : slug);
 }
-function usuarioPublico(u, env) { return { email: u.email, nombre: u.nombre || "", slug: u.slug || "", link: linkDe(env, u.slug), instagram: u.instagram || "", whatsapp: u.whatsapp || "" }; }
+function usuarioPublico(u, env) { return { email: u.email, nombre: u.nombre || "", slug: u.slug || "", link: linkDe(env, u.slug), instagram: u.instagram || "", whatsapp: u.whatsapp || "", admin: esAdmin(env, u.email) }; }
+// The owner's accounts (ADMIN_EMAILS) can see the list of RRPPs using the app
+function esAdmin(env, email) {
+  return !!email && String(env.ADMIN_EMAILS || "").toLowerCase().split(",").map(s => s.trim()).filter(Boolean).includes(String(email).toLowerCase());
+}
+// Admin: every account with how it signs in, when it joined, last activity and how much it uses the app
+async function listaAdmin(env) {
+  const { results } = await env.DB.prepare(
+    "SELECT u.email, u.nombre, u.slug, u.creado, u.google_sub IS NOT NULL AS google, u.clave IS NOT NULL AS mail, " +
+    "(SELECT MAX(expira) FROM sessions s WHERE s.sub = u.sub) AS sesion, e.data AS eventos, e.actualizado AS ev_act, " +
+    "r.actualizado AS rend_act, json_array_length(json_extract(r.data, '$.eventos')) AS ventas " +
+    "FROM users u LEFT JOIN eventos e ON e.sub = u.sub LEFT JOIN rendimiento r ON r.sub = u.sub ORDER BY u.creado DESC LIMIT 2000").all();
+  const hoy = hoyAR(), semana = Date.now() - 7 * 24 * HORA_MS;
+  const usuarios = results.map(f => {
+    let lista = [];
+    try { lista = JSON.parse(f.eventos || "[]"); } catch (e) { /* ignore */ }
+    // a session lasts SESION_MS, so the newest one tells when they last signed in
+    const ingreso = f.sesion ? f.sesion - SESION_MS : 0;
+    const actividad = Math.max(ingreso, Date.parse(f.ev_act || "") || 0, Date.parse(f.rend_act || "") || 0);
+    return {
+      email: f.email, nombre: f.nombre || "", link: linkDe(env, f.slug),
+      acceso: f.google && f.mail ? "Google + mail" : f.google ? "Google" : "Mail",
+      creado: f.creado, actividad: actividad ? new Date(actividad).toISOString() : null,
+      eventos: lista.length, proximos: lista.filter(c => !c.fecha || c.fecha >= hoy).length, ventas: Number(f.ventas) || 0
+    };
+  });
+  return {
+    usuarios,
+    totales: {
+      usuarios: usuarios.length,
+      nuevos: usuarios.filter(u => Date.parse(u.creado) > semana).length,
+      activos: usuarios.filter(u => u.actividad && Date.parse(u.actividad) > semana).length,
+      conPagina: usuarios.filter(u => u.link).length,
+      proximos: usuarios.reduce((s, u) => s + u.proximos, 0)
+    }
+  };
+}
 async function abrirSesion(env, sub, sugerido) {
   const token = tokenNuevo();
   await env.DB.prepare("INSERT INTO sessions (token_hash, sub, expira) VALUES (?, ?, ?)").bind(await sha256(token), sub, Date.now() + SESION_MS).run();
@@ -1002,6 +1038,10 @@ export default {
         const u = await usuarioDe(req, env);
         if (!u) return json(env, { ok: false, error: "sesion" }, 401);
 
+        if (ruta === "/api/admin/usuarios" && req.method === "GET") {
+          if (!esAdmin(env, u.email)) return json(env, { ok: false, error: "admin" }, 403);
+          return json(env, Object.assign({ ok: true }, await listaAdmin(env)));
+        }
         if (ruta === "/api/yo" && req.method === "GET") {
           return json(env, { ok: true, usuario: usuarioPublico(u, env), eventos: await leerLista(env, u.sub) });
         }
