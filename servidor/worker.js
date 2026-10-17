@@ -180,10 +180,12 @@ function plataformaDe(t) {
   if (h === "planout.ar" || h === "planout.com.ar") return "planout";
   if (h === "passline.com" || h === "home.passline.com" || h === "passline.com.ar") return "passline";
   if (h === "talk-tickets.com") return "talk";
+  if (h === "get-in.com" || h === "api.get-in.com") return "getin";
+  if (h === "flashpass.com.ar" || h === "events.flashpass.com.ar") return "flashpass";
   return null;
 }
 function linkPermitido(t) { return !!plataformaDe(t); }
-const HOSTS_IMAGEN = ["files.wearebombo.com", "storage.googleapis.com", "images.venti.live", "d26en73i7b5aju.cloudfront.net", "www.passline.com", "passline.com", "cdn.getcrowder.com"];
+const HOSTS_IMAGEN = ["files.wearebombo.com", "storage.googleapis.com", "images.venti.live", "d26en73i7b5aju.cloudfront.net", "www.passline.com", "passline.com", "cdn.getcrowder.com", "static.get-in.com", "flashpass.s3.us-east-1.amazonaws.com"];
 function imagenPermitida(t) { try { const u = new URL(t); return u.protocol === "https:" && HOSTS_IMAGEN.includes(u.hostname); } catch (e) { return false; } }
 
 function leerEventoLD(html) {
@@ -200,7 +202,8 @@ function leerEventoLD(html) {
         lugar: entidades((ev.location && (ev.location.name || (ev.location.address && ev.location.address.streetAddress))) || ""),
         ofertas: (Array.isArray(ev.offers) ? ev.offers : ev.offers ? [ev.offers] : []).map(o => ({
           nombre: o.name || "", precio: Number(o.price) || 0,
-          disponible: !/SoldOut|OutOfStock|Discontinued/i.test(String(o.availability || ""))
+          disponible: !/SoldOut|OutOfStock|Discontinued/i.test(String(o.availability || "")),
+          moneda: /^USD$/i.test(String(o.priceCurrency || "")) ? "USD" : undefined
         }))
       };
     }
@@ -290,16 +293,29 @@ async function leerPlanout(link) {
 }
 
 // Passline: schema.org Event plus the ticket table (#tabla_tickets_sin_codigo). Busy events sit behind a virtual queue.
-async function leerPassline(link) {
-  const r = await fetch(link, { headers: { "User-Agent": UA, "Accept-Language": "es-AR,es;q=0.9" }, redirect: "manual" });
-  const destino = r.headers.get("location") || "";
-  if (r.status >= 300 && r.status < 400) {
-    if (/queue-it/i.test(destino)) throw { code: "fila" };
-    return leerPassline(new URL(destino, link).toString());
+// Passline sends every visitor through Queue-it; when there is no real waiting line Queue-it sends them straight back
+// with a pass, like a browser would. Only a page that stays on Queue-it means a real line.
+async function traerConCookies(link) {
+  const frasco = new Map();
+  let url = link;
+  for (let i = 0; i < 8; i++) {
+    const host = new URL(url).hostname;
+    const cookie = [...frasco.entries()].filter(([k]) => k.startsWith(host + "|")).map(([k, v]) => k.split("|")[1] + "=" + v).join("; ");
+    const r = await fetch(url, { headers: Object.assign({ "User-Agent": UA, "Accept-Language": "es-AR,es;q=0.9", "Accept": "text/html,application/xhtml+xml" }, cookie ? { Cookie: cookie } : {}), redirect: "manual" });
+    (r.headers.getSetCookie ? r.headers.getSetCookie() : []).forEach(c => {
+      const kv = c.split(";")[0], j = kv.indexOf("=");
+      if (j > 0) frasco.set(host + "|" + kv.slice(0, j).trim(), kv.slice(j + 1));
+    });
+    if (r.status >= 300 && r.status < 400 && r.headers.get("location")) { url = new URL(r.headers.get("location"), url).toString(); continue; }
+    return { r, url, html: await r.text() };
   }
+  throw { code: "plataforma" };
+}
+async function leerPassline(link) {
+  const { r, url, html } = await traerConCookies(link);
+  if (/queue-it\.net$/i.test(new URL(url).hostname)) throw { code: "fila" };
   if (r.status === 403 || r.headers.get("cf-mitigated")) throw { code: "protegido" };
   if (r.status >= 400) throw { code: "plataforma" };
-  const html = await r.text();
   const ev = leerEventoLD(html) || { nombre: meta(html, "og:title").replace(/^Passline\s*-\s*/i, ""), inicio: "", flyer: meta(html, "og:image"), lugar: "", ofertas: [] };
   const tabla = (html.match(/<table id="tabla_tickets_sin_codigo">([\s\S]*?)<\/table>/) || [])[1] || "";
   const ofertas = [];
@@ -334,6 +350,50 @@ async function leerTalk(link) {
   };
 }
 
+// Get-in: the shared link (api.get-in.com/…?seller_code=…) forwards to get-in.com, whose page has schema.org Event with
+// every ticket, its price (often in USD) and whether it is sold out
+async function leerGetin(link) {
+  const u = new URL(link);
+  u.hostname = "get-in.com";
+  const r = await traer(u.toString());
+  if (r.status === 403 || r.status === 429) throw { code: "protegido" };
+  if (r.status >= 400) throw { code: "plataforma" };
+  const ev = leerEventoLD(r.html);
+  if (!ev || !ev.nombre) throw { code: "evento" };
+  return Object.assign({}, ev, { url: link.split("?")[0], inicio: ev.inicio ? aHoraAR(ev.inicio) : "" });
+}
+// FlashPass (Next.js): name, flyer and place from schema.org; tickets and start time from the page data
+function arregloJSON(texto, clave) {
+  const i = texto.indexOf('"' + clave + '":[');
+  if (i < 0) return null;
+  const j = texto.indexOf("[", i);
+  let prof = 0, k = j, enTexto = false;
+  for (; k < texto.length; k++) {
+    const c = texto[k];
+    if (enTexto) { if (c === "\\") k++; else if (c === '"') enTexto = false; continue; }
+    if (c === '"') enTexto = true;
+    else if (c === "[" || c === "{") prof++;
+    else if (c === "]" || c === "}") { prof--; if (!prof) break; }
+  }
+  try { return JSON.parse(texto.slice(j, k + 1)); } catch (e) { return null; }
+}
+async function leerFlashpass(link) {
+  const r = await traer(link);
+  if (r.status === 403 || r.status === 429) throw { code: "protegido" };
+  if (r.status >= 400) throw { code: "plataforma" };
+  let datos = "";
+  for (const m of r.html.matchAll(/self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g)) { try { datos += JSON.parse(m[1]); } catch (e) { /* skip */ } }
+  const ev = leerEventoLD(r.html) || { nombre: meta(r.html, "og:title"), flyer: meta(r.html, "og:image"), lugar: "" };
+  const nombre = String(ev.nombre || "").replace(/\s*\|\s*FlashPass\s*$/i, "");
+  if (!nombre) throw { code: "evento" };
+  const inicio = (datos.match(/"starts_at":"([^"]+)"/) || [])[1];
+  const ofertas = (arregloJSON(datos, "tickets") || []).filter(t => t && t.name && !t.members_only).map(t => ({
+    nombre: String(t.name), precio: Number(t.price) || 0, disponible: !!t.available && !t.show_soon,
+    moneda: /^USD$/i.test(String(t.currency || "")) ? "USD" : undefined
+  }));
+  return { url: link.split("?")[0], nombre, inicio: inicio ? aHoraAR(inicio) : "", flyer: ev.flyer || "", lugar: ev.lugar || "", ofertas };
+}
+
 async function leerLink(link) {
   const p = plataformaDe(link);
   if (p === "bombo") return leerBombo(link);
@@ -341,6 +401,8 @@ async function leerLink(link) {
   if (p === "planout") return leerPlanout(link);
   if (p === "passline") return leerPassline(link);
   if (p === "talk") return leerTalk(link);
+  if (p === "getin") return leerGetin(link);
+  if (p === "flashpass") return leerFlashpass(link);
   throw { code: "link" };
 }
 // Current price = cheapest ticket on sale; if all sold out, the last tier marked agotado (same rule as the app)
@@ -350,7 +412,7 @@ function elegirPrecios(ofertas) {
     if (!lista.length) return null;
     const disp = lista.filter(o => o.disponible);
     const o = disp.length ? disp.reduce((a, b) => (b.precio < a.precio ? b : a)) : lista.reduce((a, b) => (b.precio > a.precio ? b : a));
-    return { nombre: o.nombre, precio: o.precio, agotado: !disp.length };
+    return Object.assign({ nombre: o.nombre, precio: o.precio, agotado: !disp.length }, o.moneda === "USD" ? { moneda: "USD" } : {});
   }
   return { general: actual(ofertas.filter(o => !esVip(o))), vip: actual(ofertas.filter(esVip)) };
 }
@@ -443,7 +505,7 @@ async function slugLibre(env, sub, base) {
 // ---------- event lists ----------
 function precioLimpio(p) {
   if (!p || typeof p !== "object") return null;
-  return { nombre: String(p.nombre || "").slice(0, 100), precio: Math.max(0, Number(p.precio) || 0), agotado: !!p.agotado };
+  return Object.assign({ nombre: String(p.nombre || "").slice(0, 100), precio: Math.max(0, Number(p.precio) || 0), agotado: !!p.agotado }, p.moneda === "USD" ? { moneda: "USD" } : {});
 }
 function limpiarEventos(lista) {
   if (!Array.isArray(lista)) return null;
@@ -508,7 +570,11 @@ function fechaLarga(fecha, hora) {
 function filaPrecio(tipo, p) {
   if (!p) return "";
   return '<div class="precio' + (p.agotado ? " agotado" : "") + '"><span>' + tipo + (p.nombre ? " <small>" + esc(p.nombre) + "</small>" : "") +
-    "</span><b>" + (p.agotado ? "Agotado" : esc(money.format(p.precio))) + "</b></div>";
+    "</span><b>" + (p.agotado ? "Agotado" : esc(precioTexto(p))) + "</b></div>";
+}
+// prices in pesos as "$ 45.000"; Get-in and others may sell in dollars: "US$ 400"
+function precioTexto(p) {
+  return p.moneda === "USD" ? "US$ " + new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(p.precio) : money.format(p.precio);
 }
 function filtrosHTML(lista) {
   if (lista.length < 2) return "";
@@ -1008,7 +1074,7 @@ export default {
         const nonce = tokenNuevo().slice(0, 24);
         return new Response(paginaHTML(lista, u, nonce), { headers: Object.assign({}, SEGURIDAD, {
           "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store",
-          "Content-Security-Policy": "default-src 'none'; img-src https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'nonce-" + nonce + "' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+          "Content-Security-Policy": "default-src 'none'; img-src https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com https://static.get-in.com https://flashpass.s3.us-east-1.amazonaws.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'nonce-" + nonce + "' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         }) });
       }
 

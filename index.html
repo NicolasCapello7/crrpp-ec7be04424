@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com https://*.googleusercontent.com; connect-src 'self' https://bpmtickets.com.ar https://cloudflareinsights.com https://eventos.nicolascapelloubeda.workers.dev https://accounts.google.com/gsi/ https://fonts.googleapis.com https://fonts.gstatic.com https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com; frame-src https://accounts.google.com/gsi/; base-uri 'self'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com https://static.get-in.com https://flashpass.s3.us-east-1.amazonaws.com https://*.googleusercontent.com; connect-src 'self' https://bpmtickets.com.ar https://cloudflareinsights.com https://eventos.nicolascapelloubeda.workers.dev https://accounts.google.com/gsi/ https://fonts.googleapis.com https://fonts.gstatic.com https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com https://static.get-in.com https://flashpass.s3.us-east-1.amazonaws.com; frame-src https://accounts.google.com/gsi/; base-uri 'self'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#100e15">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -437,7 +437,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var storageOk = true;
-  var VERSION = 55; // bumped with sw.js on every change so phones pick it up
+  var VERSION = 56; // bumped with sw.js on every change so phones pick it up
   var VERSION_APP = "1.0.0"; // the one shown in Ajustes
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, buscarEv: "", filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
@@ -992,7 +992,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       var o = disp.length
         ? disp.reduce(function (a, b) { return b.precio < a.precio ? b : a; })
         : lista.reduce(function (a, b) { return b.precio > a.precio ? b : a; });
-      return { nombre: o.nombre, precio: o.precio, agotado: !disp.length };
+      var p = { nombre: o.nombre, precio: o.precio, agotado: !disp.length };
+      if (o.moneda === "USD") p.moneda = "USD";
+      return p;
     }
     // the reader marks VIP when the platform says so (zone/section); otherwise go by the ticket name
     function esVip(o) { return typeof o.vip === "boolean" ? o.vip : /vip/i.test(o.nombre); }
@@ -1018,15 +1020,15 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   }
   var ERRORES_LECTOR = {
     "sin-lector": "La lectura automática todavía no está activada. Cargalo a mano por ahora.",
-    "link": "Ese link no es de una plataforma compatible. Usá un link de Bombo, Venti, Planout, Passline o Talk Tickets.",
+    "link": "Ese link no es de una plataforma compatible. Usá un link de Bombo, Venti, Planout, Passline, Talk Tickets, Get-in o FlashPass.",
     "plataforma": "La plataforma no respondió. Probá de nuevo en un rato.",
-    "fila": "Este evento de Passline tiene fila de espera virtual y no se puede leer ahora. Cargalo a mano o probá más tarde.",
+    "fila": "Passline tiene una fila de espera virtual activa en este momento. Probá de nuevo en un rato o cargalo a mano.",
     "protegido": "La plataforma no dejó leer el evento automáticamente. Cargalo a mano.",
     "evento": "No encontré los datos del evento en ese link.",
     "bombo": "Bombo no respondió. Probá de nuevo en un rato.",
     "red": "No hay conexión o el lector no respondió. Probá de nuevo."
   };
-  function linkValido(t) { return /^https?:\/\/(www\.)?(wearebombo\.com|wearebombo\.app\.link|venti\.live|venti\.com\.ar|planout\.ar|planout\.com\.ar|passline\.com|home\.passline\.com|passline\.com\.ar|talk-tickets\.com)\//i.test(t); }
+  function linkValido(t) { return /^https?:\/\/(www\.)?(wearebombo\.com|wearebombo\.app\.link|venti\.live|venti\.com\.ar|planout\.ar|planout\.com\.ar|passline\.com|home\.passline\.com|passline\.com\.ar|talk-tickets\.com|get-in\.com|api\.get-in\.com|flashpass\.com\.ar|events\.flashpass\.com\.ar)\//i.test(t); }
   function extraerLink(t) {
     var txt = String(t || "").replace(/[\u200b-\u200f\u2028\u2029\ufeff]/g, "");
     var todos = txt.match(/https?:\/\/[^\s"'<>]+/gi) || [];
@@ -1579,7 +1581,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         }).join("") + "</select></div>";
     }
     if (!data.cartelera.length) {
-      return cuentaCard(false) + '<div class="empty"><strong>Todavía no agregaste eventos</strong>Tocá <b>Agregar evento</b> y pegá el link del evento de Bombo, Venti, Planout, Passline o Talk Tickets. Armo la tarjeta con el flyer, la fecha y los precios de la entrada general y VIP.</div>';
+      return cuentaCard(false) + '<div class="empty"><strong>Todavía no agregaste eventos</strong>Tocá <b>Agregar evento</b> y pegá el link del evento de Bombo, Venti, Planout, Passline, Talk Tickets, Get-in o FlashPass. Armo la tarjeta con el flyer, la fecha y los precios de la entrada general y VIP.</div>';
     }
     var h = cuentaCard(false) + chipsProd + (LECTOR_URL && data.cartelera.some(function (c) { return c.link; }) ? '<div class="auto-estado" id="auto-estado">' + esc(textoAuto()) + "</div>" : "") +
       '<div class="cartel-list">' + proximos.map(cartelCard).join("") + "</div>";
@@ -1592,8 +1594,10 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     if (!p) return "";
     return '<div class="precio' + (p.agotado ? " agotado" : "") + '"><span class="tipo">' + tipo +
       (p.nombre ? " <small>" + esc(p.nombre) + "</small>" : "") + '</span><span class="valor num">' +
-      (p.agotado ? "Agotado" : money.format(p.precio)) + "</span></div>";
+      (p.agotado ? "Agotado" : precioTexto(p)) + "</span></div>";
   }
+  // pesos as "$ 45.000"; some platforms (Get-in) sell in dollars: "US$ 400"
+  function precioTexto(p) { return p.moneda === "USD" ? "US$ " + pctf.format(p.precio) : money.format(p.precio); }
 
   function cartelCard(c) {
     var id = esc(c.id);
@@ -1636,7 +1640,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var h = '<div class="scrim" data-action="close-bg"><form class="sheet" id="cartel-form" role="dialog" aria-modal="true" aria-labelledby="c-title" novalidate>' +
       '<div class="sheet-h"><h2 id="c-title">' + (editando ? "Editar evento" : "Agregar evento") + '</h2><button type="button" class="x" data-action="close" aria-label="Cerrar">✕</button></div>' +
       '<div class="field"><label for="c-link">Link del evento</label><div class="link-row">' +
-      '<input id="c-link" class="input" type="url" inputmode="url" autocomplete="off" autocapitalize="off" placeholder="Link de Bombo, Venti, Planout, Passline o Talk Tickets" value="' + esc(linkVal) + '">' +
+      '<input id="c-link" class="input" type="url" inputmode="url" autocomplete="off" autocapitalize="off" placeholder="Link de Bombo, Venti, Passline, Get-in, FlashPass…" value="' + esc(linkVal) + '">' +
       '<button type="button" class="btn ghost sm" data-action="c-pegar">Pegar</button></div><div class="hint" id="c-ayuda"></div></div>';
     if (st.fase === "buscando") h += '<div class="c-estado">Buscando el evento…</div>';
     if (error) h += '<div class="err">' + esc(error) + "</div>";
@@ -1651,8 +1655,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       h += '<div class="field"><label for="c-nombre">Nombre del evento</label><input id="c-nombre" class="input" type="text" autocomplete="off" value="' + esc(d && d.nombre || "") + '"></div>' +
         '<div class="grid2"><div class="field"><label for="c-fecha">Fecha</label><input id="c-fecha" class="input" type="date" value="' + esc(d && d.fecha || "") + '"></div>' +
         '<div class="field"><label for="c-hora">Hora</label><input id="c-hora" class="input" type="time" value="' + esc(d && d.hora || "") + '"></div></div>' +
-        '<div class="grid2"><div class="field"><label for="c-gen">Entrada general</label><div class="money"><span>$</span><input id="c-gen" class="input miles num" type="text" inputmode="numeric" placeholder="0" value="' + (g && g.precio ? intf.format(g.precio) : "") + '"></div></div>' +
-        '<div class="field"><label for="c-vip">Entrada VIP</label><div class="money"><span>$</span><input id="c-vip" class="input miles num" type="text" inputmode="numeric" placeholder="0" value="' + (v && v.precio ? intf.format(v.precio) : "") + '"></div></div></div>';
+        '<div class="grid2"><div class="field"><label for="c-gen">Entrada general</label><div class="money"><span>' + (g && g.moneda === "USD" ? "US$" : "$") + '</span><input id="c-gen" class="input miles num" type="text" inputmode="numeric" placeholder="0" value="' + (g && g.precio ? intf.format(g.precio) : "") + '"></div></div>' +
+        '<div class="field"><label for="c-vip">Entrada VIP</label><div class="money"><span>' + (v && v.moneda === "USD" ? "US$" : "$") + '</span><input id="c-vip" class="input miles num" type="text" inputmode="numeric" placeholder="0" value="' + (v && v.precio ? intf.format(v.precio) : "") + '"></div></div></div>';
     }
     h += '<div class="field"><label for="c-prod">Productora</label><select id="c-prod" class="input">' +
       '<option value="">Sin productora</option>' +
@@ -1699,6 +1703,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     });
   }
 
+  // a hand-edited price keeps the currency the platform used (dollars stay dollars)
+  function conMoneda(p, antes) { if (antes && antes.moneda === "USD") p.moneda = "USD"; return p; }
   function guardarCartel() {
     var st = cartelSheet, d = st.datos || {};
     var err = document.getElementById("c-err");
@@ -1712,8 +1718,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       var link = extraerLink(document.getElementById("c-link").value);
       item = Object.assign({}, d, {
         link: link && linkValido(link) ? link : (d.link || ""), nombre: nombre, fecha: fecha, hora: document.getElementById("c-hora").value || "",
-        general: isNaN(gen) ? null : { nombre: d.general && d.general.precio === gen ? d.general.nombre : "", precio: gen, agotado: false },
-        vip: isNaN(vip) ? null : { nombre: d.vip && d.vip.precio === vip ? d.vip.nombre : "", precio: vip, agotado: false },
+        general: isNaN(gen) ? null : conMoneda({ nombre: d.general && d.general.precio === gen ? d.general.nombre : "", precio: gen, agotado: false }, d.general),
+        vip: isNaN(vip) ? null : conMoneda({ nombre: d.vip && d.vip.precio === vip ? d.vip.nombre : "", precio: vip, agotado: false }, d.vip),
         actualizado: new Date().toISOString()
       });
     } else {
@@ -1746,7 +1752,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   // ---------- automatic price refresh (every 5 min while Eventos is open) ----------
   var REFRESCO_MS = 5 * 60 * 1000;
   var auto = { corriendo: false, ultima: null, error: false };
-  function claveP(p) { return p ? p.nombre + "|" + p.precio + "|" + p.agotado : ""; }
+  function claveP(p) { return p ? p.nombre + "|" + p.precio + "|" + p.agotado + "|" + (p.moneda || "") : ""; }
   function preciosIguales(a, b) { return claveP(a.general) === claveP(b.general) && claveP(a.vip) === claveP(b.vip); }
   function ultimaActualizacion() {
     if (auto.ultima) return auto.ultima;
@@ -1846,7 +1852,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       { sel: ".card.cuenta", titulo: "Tu página", texto: cuenta && cuenta.slug
         ? "Este es tu link. Compartilo en tu Instagram o por WhatsApp: tus clientes ven tus próximos eventos con los precios al día y compran con tu link."
         : "Primero elegí tu <b>nombre de pública</b>: con él se arma el link que vas a compartir con tus clientes." },
-      { sel: "#fab", titulo: "Agregar un evento", texto: "Tocá <b>Agregar evento</b> y pegá el link de Bombo, Venti, Planout, Passline o Talk Tickets. La app arma la tarjeta sola con el flyer, la fecha y los precios. Si no tenés link, podés cargarlo a mano." },
+      { sel: "#fab", titulo: "Agregar un evento", texto: "Tocá <b>Agregar evento</b> y pegá el link de Bombo, Venti, Planout, Passline, Talk Tickets, Get-in o FlashPass. La app arma la tarjeta sola con el flyer, la fecha y los precios. Si no tenés link, podés cargarlo a mano." },
       { sel: ".cartel-list .cartel", titulo: "Tus eventos", texto: "Cada tarjeta muestra el precio actual de la entrada general y la VIP. Tocala para editarla; con <b>↻</b> actualizás los precios y con el <b>tacho</b> la eliminás." },
       { sel: "#auto-estado", titulo: "Precios al día", texto: "Mientras tenés la app abierta, los precios se actualizan solos cada 5 minutos. Tu página pública también se mantiene al día." },
       { sel: '.nav [data-view="fechas"]', titulo: "Conectado con Mi Rendimiento", texto: "Cada evento que agregás acá también aparece en <b>Mi Rendimiento</b>, listo para que cargues tus ventas." }
