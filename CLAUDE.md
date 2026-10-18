@@ -29,5 +29,5 @@ staging.bpmtickets.com.ar shows one branch at a time (last published: `staging`,
 ## Design
 The UI UX Pro Max skill is installed in ~/.claude/skills/ui-ux-pro-max.
 - Fonts: `--display` Bricolage Grotesque, always with `font-stretch: var(--display-w)` (82%, the narrow cut); `--body` Manrope.
-- Colors live as tokens in `:root` (dark) with a light-mode override. Use `--accent-text` (not `--accent`) when green is used as text color, so it stays readable in light mode.
+- Colors live as tokens in `:root` (dark) with a light override on `:root[data-theme="light"]`. The small script at the top of index.html sets `data-theme` from the "Fondo oscuro" switch in Ajustes (localStorage `bpm-tema`, per device), or from the phone's setting until the user picks one. Use `--accent-text` (not `--accent`) when green is used as text color, so it stays readable in light mode.
 - Card depth comes from `--shadow`; the main green buttons use `--glow`.

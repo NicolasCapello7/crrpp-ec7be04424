@@ -15,6 +15,28 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<script>
+// Light or dark background: the choice saved in Ajustes, otherwise the phone's setting.
+// Runs before the page draws so it never flashes the other color; Ajustes calls bpmTema("claro" | "oscuro").
+(function () {
+  var KEY = "bpm-tema", guardado = null;
+  try { guardado = localStorage.getItem(KEY); } catch (e) { /* ignore */ }
+  var sistema = window.matchMedia ? matchMedia("(prefers-color-scheme: light)") : null;
+  function aplicar() {
+    var claro = guardado ? guardado === "claro" : !!(sistema && sistema.matches);
+    document.documentElement.setAttribute("data-theme", claro ? "light" : "dark");
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", claro ? "#f3f1f6" : "#0c0a11");
+  }
+  window.bpmTema = function (t) {
+    if (t) { guardado = t; try { localStorage.setItem(KEY, t); } catch (e) { /* ignore */ } }
+    aplicar();
+    return document.documentElement.getAttribute("data-theme");
+  };
+  if (sistema && sistema.addEventListener) sistema.addEventListener("change", function () { if (!guardado) aplicar(); });
+  aplicar();
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,600..800&family=Manrope:wght@400..800&family=Big+Shoulders+Display:wght@800&display=swap">
@@ -48,15 +70,14 @@
   --body: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: dark;
 }
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #f3f1f6; --surface: #ffffff; --surface-2: #eeebf3; --line: #e0dbe7;
-    --fg: #17141d; --muted: #645e70; --accent: #00b84f; --accent-text: #00843a; --accent-bg: rgba(0, 184, 79, .12); --accent-ink: #03200e;
-    --shadow: 0 1px 2px rgba(23, 20, 29, .05), 0 8px 24px -14px rgba(23, 20, 29, .18);
-    --glow: 0 8px 20px -10px rgba(0, 150, 64, .5);
-    --ok: #0a74a3; --ok-bg: #dcf0fa; --info: #6a3fd1; --info-bg: #ece5fb; --warn: #9d5e06; --warn-bg: #fbeed6; --danger: #c9302c;
-    color-scheme: light;
-  }
+/* light background: chosen in Ajustes, or the phone's setting until then (see the script at the top) */
+:root[data-theme="light"] {
+  --bg: #f3f1f6; --surface: #ffffff; --surface-2: #eeebf3; --line: #e0dbe7;
+  --fg: #17141d; --muted: #645e70; --accent: #00b84f; --accent-text: #00843a; --accent-bg: rgba(0, 184, 79, .12); --accent-ink: #03200e;
+  --shadow: 0 1px 2px rgba(23, 20, 29, .05), 0 8px 24px -14px rgba(23, 20, 29, .18);
+  --glow: 0 8px 20px -10px rgba(0, 150, 64, .5);
+  --ok: #0a74a3; --ok-bg: #dcf0fa; --info: #6a3fd1; --info-bg: #ece5fb; --warn: #9d5e06; --warn-bg: #fbeed6; --danger: #c9302c;
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -411,7 +432,14 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
 .nav button.aviso::after { top: 7px; left: calc(50% + 12px); }
 .toast { box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .5); }
 .scrim { -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+/* Ajustes: light / dark background switch */
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; font-weight: 700; font-size: 16px; cursor: pointer; }
+.switch { -webkit-appearance: none; appearance: none; flex: 0 0 auto; position: relative; width: 52px; height: 32px; margin: 0; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); cursor: pointer; }
+.switch::before { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: var(--muted); }
+.switch:checked { background: var(--accent); border-color: var(--accent); }
+.switch:checked::before { transform: translateX(20px); background: var(--accent-ink); }
 @media (prefers-reduced-motion: no-preference) {
+  .switch, .switch::before { transition: transform .2s ease, background-color .2s ease; }
   .btn, .fab, .btn-pay, .chip, .icon-btn, .x, .ayuda, .pct-chip, .nav button svg { transition: transform .15s ease, background-color .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease; }
   .btn:active, .fab:active, .btn-pay:active, .chip:active, .icon-btn:active, .x:active, .ayuda:active, .pct-chip:active { transform: scale(.96); }
 }
@@ -490,7 +518,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var storageOk = true;
-  var VERSION = 68; // bumped with sw.js on every change so phones pick it up
+  var VERSION = 69; // bumped with sw.js on every change so phones pick it up
   var VERSION_APP = "1.0.0"; // the one shown in Ajustes
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, buscarEv: "", filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
@@ -1047,6 +1075,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       '<button class="btn" type="submit">Guardar</button></form>' +
       "<p>Si lo cambiás, se recalculan los eventos <b>pendientes</b>. Los que ya cobraste conservan el % con el que se cobraron, y los que tienen un % especial (tocando el % de la tarjeta) mantienen el suyo.</p>" +
       '<div class="err" id="pct-err"></div></section>';
+
+    h += '<section class="card"><label class="switch-row"><span>Fondo oscuro</span><input type="checkbox" role="switch" class="switch" id="tema-oscuro"' +
+      (document.documentElement.getAttribute("data-theme") === "light" ? "" : " checked") + "></label></section>";
 
     h += viewProductoras();
 
@@ -2717,6 +2748,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     }
   });
   document.addEventListener("change", function (e) {
+    if (e.target.id === "tema-oscuro") { window.bpmTema(e.target.checked ? "oscuro" : "claro"); return; }
     if (e.target.id === "cartel-prod") { ui.cartelProd = e.target.value; render(); return; }
     if (e.target.id === "f-frees-on") {
       var fi = document.getElementById("f-frees");
