@@ -22,8 +22,12 @@ App for RRPPs (event promoters): `index.html` (PWA, vanilla JS) + `servidor/work
 | `plan-premium` | Plan Premium | Instagram story (1080×1920) from each event + "Tu página" stats (visits, taps on Comprar) | Create tables `visitas` and `clics` in rrpp-db before deploying the Worker (schema.sql v5) |
 | `dashboard-jefes` | Dashboard Jefes de Equipo | Jefe invites RRPPs by mail, they accept; Estadísticas "Equipo / Mía" with time filters | Create table `equipo` + indexes in rrpp-db before deploying (schema.sql v6). Conflicts with plan-premium in Estadísticas |
 | (in `staging` base) | Copia de seguridad | Load/save backup card in Ajustes, visible only on staging; `COPIA_EN_SITIO` (false) turns it on in production | Already in main, hidden |
+| (in `staging` base) | Nuevo estilo | Fonts Bricolage Grotesque + Manrope, deeper colors, shadows, focus ring, active-tab pill; also the public page in worker.js | Not in main yet. Release = merge staging into main + deploy the production Worker (no DB changes). `plan-premium` and `dashboard-jefes` branched before it: merge `staging` into them before publishing them |
 
-staging.bpmtickets.com.ar shows one branch at a time (last published: `dashboard-jefes`).
+staging.bpmtickets.com.ar shows one branch at a time (last published: `staging`, with Nuevo estilo).
 
 ## Design
-The UI UX Pro Max skill is installed in ~/.claude/skills/ui-ux-pro-max. Next planned work: new fonts and style, on a new staging branch.
+The UI UX Pro Max skill is installed in ~/.claude/skills/ui-ux-pro-max.
+- Fonts: `--display` Bricolage Grotesque, always with `font-stretch: var(--display-w)` (82%, the narrow cut); `--body` Manrope.
+- Colors live as tokens in `:root` (dark) with a light-mode override. Use `--accent-text` (not `--accent`) when green is used as text color, so it stays readable in light mode.
+- Card depth comes from `--shadow`; the main green buttons use `--glow`.
