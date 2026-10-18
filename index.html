@@ -17,7 +17,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,600..800&family=Manrope:wght@400..800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,600..800&family=Manrope:wght@400..800&family=Big+Shoulders+Display:wght@800&display=swap">
 <style>
 /* Layout: one phone column; each fecha is a ticket stub (event half + commission stub); fixed bottom tab bar */
 :root {
@@ -43,6 +43,8 @@
   /* Bricolage Grotesque (narrowed with font-stretch) for titles and big figures, Manrope for everything else */
   --display: "Bricolage Grotesque", "Arial Narrow", Impact, sans-serif;
   --display-w: 82%;
+  /* the "BPM TICKETS" wordmark keeps its original font so the logo is the same everywhere */
+  --logo: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
   --body: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: dark;
 }
@@ -74,8 +76,8 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
 .app { max-width: 560px; margin: 0 auto; padding-inline: 16px; padding-top: calc(16px + env(safe-area-inset-top, 0px)); padding-bottom: 28px; display: flex; flex-direction: column; gap: 18px; }
 
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
-.brand { font-family: var(--display); font-stretch: var(--display-w); font-weight: 800; font-size: 30px; letter-spacing: .02em; text-transform: uppercase; line-height: 1; }
-.brand span { color: var(--accent-text); }
+.brand { font-family: var(--logo); font-weight: 800; font-size: 30px; letter-spacing: .02em; text-transform: uppercase; line-height: 1; }
+.brand span { color: var(--accent); }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand .logo { width: 38px; height: auto; flex: 0 0 auto; }
 .brand > div { white-space: nowrap; font-size: clamp(22px, 6.6vw, 30px); }
@@ -87,7 +89,7 @@ html, body { overflow: hidden; overscroll-behavior: none; background: var(--surf
   .top { gap: 8px; }
   .brand { gap: 8px; }
   .brand .logo { width: 30px; }
-  .brand > div { font-size: 19px; }
+  .brand > div { font-size: 21px; }
   .top-der { gap: 6px; }
   .ayuda { width: 32px; height: 32px; font-size: 15px; }
   .top .fab { padding: 9px 12px; gap: 5px; font-size: 13.5px; }
@@ -488,7 +490,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var storageOk = true;
-  var VERSION = 67; // bumped with sw.js on every change so phones pick it up
+  var VERSION = 68; // bumped with sw.js on every change so phones pick it up
   var VERSION_APP = "1.0.0"; // the one shown in Ajustes
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, buscarEv: "", filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
