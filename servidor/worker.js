@@ -736,6 +736,8 @@ function paginaHTML(lista, u, nonce) {
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#0c0a11">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,800&family=Manrope:wght@400..800&family=Big+Shoulders+Display:wght@800&display=swap">
 <style>
@@ -1153,7 +1155,7 @@ export default {
         const nonce = tokenNuevo().slice(0, 24);
         return new Response(paginaHTML(lista, u, nonce), { headers: Object.assign({}, SEGURIDAD, {
           "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": env.STAGING ? "noindex, nofollow" : "all",
-          "Content-Security-Policy": "default-src 'none'; img-src https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com https://static.get-in.com https://flashpass.s3.us-east-1.amazonaws.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'nonce-" + nonce + "' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+          "Content-Security-Policy": "default-src 'none'; img-src 'self' https://files.wearebombo.com https://storage.googleapis.com https://images.venti.live https://d26en73i7b5aju.cloudfront.net https://www.passline.com https://cdn.getcrowder.com https://static.get-in.com https://flashpass.s3.us-east-1.amazonaws.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'nonce-" + nonce + "' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         }) });
       }
 
