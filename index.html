@@ -518,7 +518,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
   var CUENTA_KEY = "comisiones-rrpp-cuenta";
   var cuenta = null; // { token, email, nombre, slug, sugerido, sincronizado }
   var storageOk = true;
-  var VERSION = 69; // bumped with sw.js on every change so phones pick it up
+  var VERSION = 70; // bumped with sw.js on every change so phones pick it up
   var VERSION_APP = "1.0.0"; // the one shown in Ajustes
   var ui = { view: "cartelera", filtro: "todas", rankBy: "entradas", pendingImport: null, editPct: null, editProd: null, prodBorrar: false,
     filtroEv: { desde: "", hasta: "", prod: "" }, panelEv: false, buscarEv: "", filtroRend: { desde: "", hasta: "" }, panelRend: false, cartelBorrar: null, cartelProd: "" };
@@ -1812,6 +1812,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     var linkVal = (document.getElementById("c-link") || {}).value || (d && d.link) || "";
     var selProd = document.getElementById("c-prod");
     var prodVal = selProd ? selProd.value : (d && d.productoraId) || "";
+    var npNombre = (document.getElementById("c-np-nombre") || {}).value || "";
+    var npFree = (document.getElementById("c-np-free") || {}).value || "";
+    var npFactura = !!(document.getElementById("c-np-factura") || {}).checked;
     var editando = !!(d && d.id);
     var h = '<div class="scrim" data-action="close-bg"><form class="sheet" id="cartel-form" role="dialog" aria-modal="true" aria-labelledby="c-title" novalidate>' +
       '<div class="sheet-h"><h2 id="c-title">' + (editando ? "Editar evento" : "Agregar evento") + '</h2><button type="button" class="x" data-action="close" aria-label="Cerrar">✕</button></div>' +
@@ -1838,7 +1841,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
       '<option value="">Sin productora</option>' +
       data.productoras.slice().sort(function (a, b) { return a.nombre.localeCompare(b.nombre, "es"); }).map(function (p) {
         return '<option value="' + esc(p.id) + '"' + (prodVal === p.id ? " selected" : "") + ">" + esc(p.nombre) + "</option>";
-      }).join("") + "</select></div>";
+      }).join("") +
+      '<option value="__nueva"' + (prodVal === "__nueva" ? " selected" : "") + ">+ Agregar productora nueva…</option></select></div>" +
+      '<div class="nueva-prod" id="c-np-wrap"' + (prodVal === "__nueva" ? "" : " hidden") + ">" +
+      '<div class="field"><label for="c-np-nombre">Nombre de la productora</label><input id="c-np-nombre" class="input" type="text" autocomplete="off" placeholder="Nombre" value="' + esc(npNombre) + '"></div>' +
+      '<div class="field"><label for="c-np-free">Valor por free escaneado</label><div class="money"><span>$</span><input id="c-np-free" class="input miles num" type="text" inputmode="numeric" autocomplete="off" placeholder="0" value="' + esc(npFree) + '"></div></div>' +
+      '<label class="check"><input type="checkbox" id="c-np-factura"' + (npFactura ? " checked" : "") + "> Pide factura para pagar</label></div>";
     h += '<div class="err" id="c-err"></div><div class="actions">';
     if (st.fase === "link" || st.fase === "buscando") {
       h += '<button class="btn" type="submit"' + (st.fase === "buscando" ? " disabled" : "") + ">Buscar evento</button>" +
@@ -1903,7 +1911,23 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     } else {
       item = Object.assign({}, d);
     }
-    item.productoraId = document.getElementById("c-prod").value || null;
+    // Productora: an existing one, none, or a new one typed in the form (same as in Mi Rendimiento)
+    var prodSel = document.getElementById("c-prod").value;
+    var prodNueva = null;
+    if (prodSel === "__nueva") {
+      var npNombre = document.getElementById("c-np-nombre").value.trim();
+      if (!npNombre) { err.textContent = "Poné el nombre de la productora nueva."; return; }
+      var mismaProd = prodPorNombre(npNombre);
+      if (mismaProd) prodSel = mismaProd.id;
+      else {
+        var npFree = leerValorFree("c-np-free");
+        if (isNaN(npFree)) { err.textContent = "Revisá el valor del free: solo números, por ejemplo 5.000"; return; }
+        prodNueva = { id: nuevoId(), nombre: npNombre, factura: document.getElementById("c-np-factura").checked, valorFree: npFree };
+        prodSel = prodNueva.id;
+      }
+    }
+    item.productoraId = prodSel || null;
+    if (prodNueva) data.productoras.push(prodNueva);
     var existente = d.id ? data.cartelera.find(function (c) { return c.id === d.id; })
       : item.link ? data.cartelera.find(function (c) { return c.link === item.link || (item.url && c.url === item.url); }) : null;
     var antes = data.cartelera.slice();
@@ -1921,7 +1945,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
         pctPropio: null, cobrado: false, fechaCobro: null, pctCobrado: null, creado: new Date().toISOString() });
       creadoEnRendimiento = true;
     }
-    if (!persist()) { data.cartelera = antes; data.eventos = antesEv; return; }
+    if (!persist()) { data.cartelera = antes; data.eventos = antesEv; if (prodNueva) data.productoras.pop(); return; }
     closeSheet();
     render();
     toast(existente ? "Evento actualizado" : creadoEnRendimiento ? "Evento guardado y agregado a Mi Rendimiento" : "Evento guardado");
@@ -2748,6 +2772,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator { opacity: .7; }
     }
   });
   document.addEventListener("change", function (e) {
+    if (e.target.id === "c-prod") {
+      var cNueva = e.target.value === "__nueva";
+      document.getElementById("c-np-wrap").hidden = !cNueva;
+      if (cNueva) document.getElementById("c-np-nombre").focus();
+      return;
+    }
     if (e.target.id === "tema-oscuro") { window.bpmTema(e.target.checked ? "oscuro" : "claro"); return; }
     if (e.target.id === "cartel-prod") { ui.cartelProd = e.target.value; render(); return; }
     if (e.target.id === "f-frees-on") {
