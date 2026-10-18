@@ -22,7 +22,7 @@ App for RRPPs (event promoters): `index.html` (PWA, vanilla JS) + `servidor/work
 | `plan-premium` | Plan Premium | Instagram story (1080×1920) from each event + "Tu página" stats (visits, taps on Comprar) | Create tables `visitas` and `clics` in rrpp-db before deploying the Worker (schema.sql v5) |
 | `dashboard-jefes` | Dashboard Jefes de Equipo | Jefe invites RRPPs by mail, they accept; Estadísticas "Equipo / Mía" with time filters | Create table `equipo` + indexes in rrpp-db before deploying (schema.sql v6). Conflicts with plan-premium in Estadísticas |
 | (in `staging` base) | Copia de seguridad | Load/save backup card in Ajustes, visible only on staging; `COPIA_EN_SITIO` (false) turns it on in production | Already in main, hidden |
-| (in `staging` base) | Nuevo estilo | Fonts Bricolage Grotesque + Manrope, deeper colors, shadows, focus ring, active-tab pill; also the public page in worker.js | Not in main yet. Release = merge staging into main + deploy the production Worker (no DB changes). `plan-premium` and `dashboard-jefes` branched before it: merge `staging` into them before publishing them |
+| (in `staging` base) | Nuevo estilo + Fondo oscuro | Fonts Bricolage Grotesque + Manrope (logo keeps Big Shoulders), new colors and finish, "Fondo oscuro" switch in Ajustes, browser-tab icon on the public page | Released to production (version 69). `plan-premium` and `dashboard-jefes` branched before it: merge `staging` into them before publishing them |
 
 staging.bpmtickets.com.ar shows one branch at a time (last published: `staging`, with Nuevo estilo).
 
