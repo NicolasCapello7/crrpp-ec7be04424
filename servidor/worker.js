@@ -735,17 +735,17 @@ function paginaHTML(lista, u, nonce) {
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#100e15">
+<meta name="theme-color" content="#0c0a11">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700&family=Big+Shoulders+Display:wght@800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,800&family=Manrope:wght@400..800&display=swap">
 <style>
-:root { --bg:#100e15; --surface:#1b1823; --line:#363042; --fg:#f3f0f7; --muted:#a7a0b4; --accent:#39ff7f; --ink:#04210f; --danger:#ff6b6b; color-scheme: dark; }
+:root { --bg:#0c0a11; --surface:#17141e; --line:#2f2a3a; --fg:#f4f1f8; --muted:#a8a1b6; --accent:#39ff7f; --ink:#04210f; --danger:#ff6b6b; color-scheme: dark; }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font-family: Archivo, system-ui, -apple-system, sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: Manrope, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
 main { max-width: 560px; margin: 0 auto; padding: calc(20px + env(safe-area-inset-top, 0px)) 16px calc(32px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 18px; }
-h1 { margin: 0; font-family: "Big Shoulders Display", "Arial Narrow", sans-serif; font-weight: 800; font-size: 34px; text-transform: uppercase; letter-spacing: .02em; line-height: 1; }
+h1 { margin: 0; font-family: "Bricolage Grotesque", "Arial Narrow", sans-serif; font-stretch: 82%; font-weight: 800; font-size: 36px; letter-spacing: -.01em; line-height: 1; }
 h1 span { color: var(--accent); }
-.ev { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+.ev { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 10px 28px -16px rgba(0,0,0,.7); }
 .ev img { display: block; width: 100%; height: auto; background: #26222f; }
 .info { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; }
 .fecha { color: var(--accent); font-size: 13px; font-weight: 700; letter-spacing: .08em; }
@@ -754,9 +754,9 @@ h2 { margin: 0; font-size: 19px; line-height: 1.25; overflow-wrap: anywhere; }
 .precio { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; border-top: 1px dashed var(--line); padding-top: 7px; font-size: 15px; }
 .precio span { font-weight: 600; } .precio small { color: var(--muted); font-weight: 500; font-size: 12px; margin-left: 4px; }
 .precio b { font-variant-numeric: tabular-nums; white-space: nowrap; } .precio.agotado b { color: var(--danger); }
-.comprar { margin-top: 10px; display: block; text-align: center; text-decoration: none; background: var(--accent); color: var(--ink); font-weight: 700; font-size: 16px; padding: 14px; border-radius: 12px; }
-.comprar.off { background: transparent; color: var(--fg); border: 1px solid var(--line); }
-.marca { display: flex; align-items: center; gap: 8px; font-family: "Big Shoulders Display", "Arial Narrow", sans-serif; font-weight: 800; font-size: 18px; letter-spacing: .04em; margin-bottom: -8px; }
+.comprar { margin-top: 10px; display: block; text-align: center; text-decoration: none; background: var(--accent); color: var(--ink); font-weight: 800; font-size: 16px; padding: 14px; border-radius: 12px; box-shadow: 0 8px 22px -10px rgba(57,255,127,.55); }
+.comprar.off { background: transparent; color: var(--fg); border: 1px solid var(--line); box-shadow: none; }
+.marca { display: flex; align-items: center; gap: 8px; font-family: "Bricolage Grotesque", "Arial Narrow", sans-serif; font-stretch: 82%; font-weight: 800; text-transform: uppercase; font-size: 18px; letter-spacing: .04em; margin-bottom: -8px; }
 .marca .logo { width: 30px; height: auto; } .marca b { color: var(--accent); font-weight: 800; }
 .redes { display: flex; gap: 10px; flex-wrap: wrap; margin-top: -4px; }
 .red { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px 8px 10px; font-weight: 600; font-size: 14px; }
